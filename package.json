@@ -1,24 +1,38 @@
 {
 	"name": "@qsocket/core",
-	"description": "Unified transport package for the qsocket library, providing multiple transport options for engine.io and engine.io-client. Includes support for both the latest and legacy versions, allowing flexible integration across different environments for server and client connections.",
+	"description": "Powerful inter-process communication library for browser and Node.js environments, with flexible transport support including WebSocket, TCP, Unix Sockets, and Windows Pipes. Delivers high-performance data exchange through byte-stream buffers and automatic compression, making it ideal for real-time applications. Currently supports engine.io, with additional transport options coming soon.",
 	"version": "0.0.1-alpha",
 	"keywords": [
 		"qsocket",
+		"core",
+		"inter-process communication",
+		"ipc",
+		"real-time",
 		"engine.io",
 		"engine.io-client",
 		"transport",
-		"socket",
-		"websocket",
-		"real-time",
+		"WebSocket",
+		"TCP socket",
+		"Unix socket",
+		"Windows Pipes",
+		"file socket",
+		"buffer",
+		"byte-stream",
+		"data compression",
+		"GZIP",
+		"DEFLATE",
 		"networking",
-		"server",
-		"client",
-		"latest",
-		"legacy",
-		"compatibility",
+		"namespace",
+		"events",
+		"client-server",
 		"Node.js",
 		"browser",
-		"communication"
+		"protocol",
+		"high-performance",
+		"flexible transport",
+		"reliable communication",
+		"scalable",
+		"modular"
 	],
 	"author": "Pobedinskiy David (qpyracuk) <qpyracuk@gmail.com>",
 	"license": "MIT",
@@ -61,12 +75,10 @@
 		}
 	],
 	"dependencies": {
-		"@qsocket/protocol": "^0.0.1-rc",
-		"@qsocket/transport": "^0.0.1-rc"
+		"@qsocket/protocol": "^0.0.1-rc"
 	},
 	"peerDependencies": {
-		"@qsocket/protocol": "^0.0.1-rc",
-		"@qsocket/transport": "^0.0.1-rc"
+		"@qsocket/protocol": "^0.0.1-rc"
 	},
 	"devDependencies": {
 		"@types/eslint-config-prettier": "^6.11.3",
