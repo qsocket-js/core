@@ -1,0 +1,86 @@
+{
+	"name": "@qsocket/core",
+	"description": "Unified transport package for the qsocket library, providing multiple transport options for engine.io and engine.io-client. Includes support for both the latest and legacy versions, allowing flexible integration across different environments for server and client connections.",
+	"version": "0.0.1-alpha",
+	"keywords": [
+		"qsocket",
+		"engine.io",
+		"engine.io-client",
+		"transport",
+		"socket",
+		"websocket",
+		"real-time",
+		"networking",
+		"server",
+		"client",
+		"latest",
+		"legacy",
+		"compatibility",
+		"Node.js",
+		"browser",
+		"communication"
+	],
+	"author": "Pobedinskiy David (qpyracuk) <qpyracuk@gmail.com>",
+	"license": "MIT",
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"exports": {
+		".": {
+			"require": "./dist/index.cjs",
+			"import": "./dist/index.js"
+		},
+		"./package.json": "./package.json"
+	},
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"README.md",
+		"LICENSE"
+	],
+	"scripts": {
+		"dev": "tsup ./src/index.ts --watch --onSuccess \"node ./dist/index.js\"",
+		"start": "node ./dist/index.js",
+		"build": "tsup",
+		"lint": "eslint \"**/*.{ts,tsx}\"",
+		"lint:fix": "eslint \"**/*.{ts,tsx}\" --fix --color",
+		"format": "prettier --write src/"
+	},
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/qsocket-js/qsocket-core.git"
+	},
+	"bugs": {
+		"url": "https://github.com/qsocket-js/qsocket-core/issues"
+	},
+	"homepage": "https://github.com/qsocket-js/qsocket-core#readme",
+	"contributors": [
+		{
+			"name": "Pobedinskiy David",
+			"email": "qpyracuk@gmail.com"
+		}
+	],
+	"dependencies": {
+		"@qsocket/protocol": "^0.0.1-rc",
+		"@qsocket/transport": "^0.0.1-rc"
+	},
+	"peerDependencies": {
+		"@qsocket/protocol": "^0.0.1-rc",
+		"@qsocket/transport": "^0.0.1-rc"
+	},
+	"devDependencies": {
+		"@types/eslint-config-prettier": "^6.11.3",
+		"@types/node": "^22.9.0",
+		"@typescript-eslint/eslint-plugin": "^8.13.0",
+		"@typescript-eslint/parser": "^8.13.0",
+		"eslint": "^9.14.0",
+		"eslint-config-prettier": "^9.1.0",
+		"eslint-plugin-prettier": "^5.2.1",
+		"prettier": "^3.3.3",
+		"tsup": "^8.2.4",
+		"typescript": "^5.6.3"
+	},
+	"engines": {
+		"node": ">=8.0.0"
+	}
+}

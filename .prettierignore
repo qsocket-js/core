@@ -1,0 +1,12 @@
+# Игнорируемые по умолчанию
+**/.git
+**/.svn
+**/.hg
+**/node_modules
+
+# Игнорируемые папки
+dist/
+build/
+production/
+node_modules/
+# src/.submodules
