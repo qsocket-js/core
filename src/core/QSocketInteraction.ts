@@ -19,6 +19,7 @@ import QSocketNamespace from './QSocketNamespace';
 import QSocketUniqueGenerator from './QSocketUniqueGenerator';
 import QSocketDebuger from './QSocketDebuger';
 import QSocketCompressor from './QSocketCompressor';
+import { IQSocketProtocolConfig } from '@/@types/shared';
 //#endregion
 
 export default class QSocketInteraction {
@@ -37,6 +38,7 @@ export default class QSocketInteraction {
 		socket: TQSocketInteractionInstance,
 		server: QSocketServer | QSocketClient,
 		interactions: Map<`${'C' | 'S'}${string}-I${string}`, QSocketInteraction>,
+		protocolConfig: IQSocketProtocolConfig,
 		debuger: QSocketDebuger
 	) {
 		this.id = id;
@@ -45,16 +47,23 @@ export default class QSocketInteraction {
 		this.socket = socket;
 		this.server = server;
 		this.interactions = interactions;
-
+		this.protocol = this.protocolConfigure(protocolConfig);
 		(this.socket as any).on('message', this.onHandle.bind(this));
-
-		const compressor = new QSocketCompressor();
-		this.protocol = new QSocketProtocol(compressor, 1024);
 	}
 
 	static addNamespace(interaction: QSocketInteraction, namespace: QSocketNamespace) {
 		interaction.namespaces.set(namespace.name, namespace);
 		QSocketNamespace.addClient(namespace, interaction);
+	}
+
+	private protocolConfigure(protocolConfig: IQSocketProtocolConfig) {
+		if (protocolConfig.compressor?.on) {
+			const compressor = protocolConfig.compressor.compressor ?? new QSocketCompressor();
+			const compressionFromSize = protocolConfig.compressor.compressionFromSize ?? 100 * 1024;
+			return new QSocketProtocol(compressor, compressionFromSize);
+		} else {
+			return new QSocketProtocol();
+		}
 	}
 
 	/** Главный обработчик сообщений */
@@ -65,7 +74,6 @@ export default class QSocketInteraction {
 		}
 
 		const message = await this.protocol.from(data);
-
 		if (message instanceof QSocketProtocolDecodeError) {
 			this.debuger.error(message);
 			return;
@@ -121,7 +129,6 @@ export default class QSocketInteraction {
 
 	private onAck(message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>) {
 		const ackMap = new Map<string, IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck>[]>();
-		console.log(this.id, message);
 		message.forEach((chunk) => {
 			let ack = ackMap.get(chunk.meta.uuid) || [];
 			ack.push(chunk);
@@ -141,18 +148,17 @@ export default class QSocketInteraction {
 	private onControl(message: IQSocketProtocolChunk<IQSocketProtocolMessageMetaControl>) {
 		let result = false;
 		const data = message.payload.data as IQSocketControlData;
-		console.log(this.id, 'ON', message);
+
 		if (data.command === 'join-namespace') {
 			const namespace = this.server.getNamespace(data.namespace);
 			if (!namespace) {
 				this.debuger.error(`Namespace "${data.namespace}" not found`);
 				return;
 			}
-			if (this.namespaces.has(namespace.name)) {
-				this.debuger.error(`Namespace "${namespace.name}" is already connected [${this.server.type}, ${this.id}]`);
-				return;
+			if (!this.namespaces.has(namespace.name)) {
+				this.namespaces.set(namespace.name, namespace);
 			}
-			this.namespaces.set(namespace.name, namespace);
+
 			QSocketNamespace.addClient(namespace, this);
 			result = true;
 		} else if (data.command === 'leave-from-namespace') {
@@ -238,7 +244,6 @@ export default class QSocketInteraction {
 	async sendCommand(
 		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaControl>
 	): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>[number]['payload'][][] | void> {
-		console.log(this.id, 'EMIT', message);
 		const data = await this.protocol.to(message);
 
 		if (data instanceof QSocketProtocolEncodeError) {
@@ -246,7 +251,6 @@ export default class QSocketInteraction {
 			return;
 		}
 		this.socket.send(data);
-
 		return (
 			await Promise.allSettled<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>[number]['payload'][]>(
 				message.map((chunk) => {
@@ -254,14 +258,14 @@ export default class QSocketInteraction {
 						const timeout = 10000;
 						const ackResolver = (ackResult: IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>[number]['payload'][]) => {
 							clearTimeout(timer);
-							this.acks.delete(chunk.meta.uuid);
 							emitResolve(ackResult);
+							this.acks.delete(chunk.meta.uuid);
 						};
 						this.acks.set(chunk.meta.uuid, ackResolver);
 						const timer = setTimeout(() => {
-							this.acks.delete(chunk.meta.uuid);
 							this.debuger.error(`Время ожидания истекло [command, uuid: ${chunk.meta.uuid}]`);
 							emitReject(new Error('Timeout'));
+							this.acks.delete(chunk.meta.uuid);
 						}, timeout);
 					});
 				})

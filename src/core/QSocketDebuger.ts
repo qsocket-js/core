@@ -1,4 +1,4 @@
-import { IQSocketDebugConfig, IQSocketLogger } from '@/@types/general';
+import { IQSocketDebugConfig, IQSocketLogger } from '@/@types/shared';
 
 export default class QSocketDebuger {
 	/** Включен ли режим отладки */

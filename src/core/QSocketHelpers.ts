@@ -1,5 +1,6 @@
 import { TQSocketContentEncoding, TQSocketContentType } from '@/@types/interface';
 import { EQSocketProtocolContentEncoding, EQSocketProtocolContentType, TQSocketProtocolPayloadData } from '@qsocket/protocol';
+import QSocketCompressor from './QSocketCompressor';
 
 /** Маппинг типов контента */
 export const contentTypeMap = new Map<EQSocketProtocolContentType, TQSocketContentType>([
@@ -103,4 +104,18 @@ export function getContentTypeString(contentType?: EQSocketProtocolContentType):
 export function getContentEncodingString(contentEncoding?: EQSocketProtocolContentEncoding): TQSocketContentEncoding {
 	if (contentEncoding === undefined) return 'raw';
 	return contentEncodingMap.get(contentEncoding) ?? 'raw';
+}
+
+/**
+ * @description Возвращает конфигурацию протокола по умолчанию
+ * @returns
+ */
+export function getDefaultProtocolConfig() {
+	return {
+		compressor: {
+			on: true,
+			compressor: new QSocketCompressor(),
+			compressionFromSize: 1024 * 100,
+		},
+	};
 }

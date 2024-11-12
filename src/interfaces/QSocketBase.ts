@@ -1,15 +1,17 @@
 //#region Импорт общих типов
-import { TQSocketClientSocket, TQSocketServerSocket } from '@/@types/transport';
-import type { IQSocketDebugConfig } from '../@types/general';
+import type { TQSocketClientSocket, TQSocketServerSocket } from '@/@types/transport';
+import type { IQSocketDebugConfig, IQSocketProtocolConfig } from '../@types/shared';
+import type QSocketServer from './QSocketServer';
+import type QSocketClient from './QSocketClient';
 //#endregion
 
 //#region Импорт модулей ядра Q-SOCKET
-import QSocketNamespace from '../core/QSocketNamespace';
+import QSocketNamespace from '@/core/QSocketNamespace';
 import QSocketDebuger from '@/core/QSocketDebuger';
 import QSocketInteraction from '@/core/QSocketInteraction';
 import QSocketUniqueGenerator from '@/core/QSocketUniqueGenerator';
-import QSocketServer from './QSocketServer';
-import QSocketClient from './QSocketClient';
+
+import { getDefaultProtocolConfig } from '@/core/QSocketHelpers';
 //#endregion
 
 const clientUUID = new QSocketUniqueGenerator();
@@ -27,14 +29,21 @@ export default abstract class QSocketBase {
 	protected readonly namespaces: Map<string, QSocketNamespace> = new Map();
 	protected readonly debuger: QSocketDebuger;
 	protected readonly interactions: Map<`${'C' | 'S'}${string}-I${string}`, QSocketInteraction> = new Map();
+	protected readonly protocolConfig: IQSocketProtocolConfig = getDefaultProtocolConfig();
 
 	/**
 	 * Конструктор класса QSocketBase.
 	 * @param {IQSocketDebugConfig} [debugConfig] - Конфигурация для режима отладки.
 	 */
-	constructor(type: 'client' | 'server', debugConfig?: IQSocketDebugConfig) {
+	constructor(type: 'client' | 'server', protocolConfig?: IQSocketProtocolConfig, debugConfig?: IQSocketDebugConfig) {
 		this.type = type;
 		this.debuger = new QSocketDebuger(debugConfig);
+		if (protocolConfig !== undefined && protocolConfig.compressor !== undefined) {
+			this.protocolConfig.compressor!.on = protocolConfig.compressor.on ?? this.protocolConfig.compressor!.on;
+			this.protocolConfig.compressor!.compressor = protocolConfig.compressor.compressor ?? this.protocolConfig.compressor!.compressor;
+			this.protocolConfig.compressor!.compressionFromSize =
+				protocolConfig.compressor.compressionFromSize ?? this.protocolConfig.compressor!.compressionFromSize;
+		}
 		const prefix: 'S' | 'C' = type === 'server' ? 'S' : 'C';
 		const generator = type === 'server' ? serverUUID : clientUUID;
 		this.id = `${prefix}${generator.next()}`;
@@ -44,7 +53,7 @@ export default abstract class QSocketBase {
 
 	protected connectionHandle(socket: TQSocketServerSocket | TQSocketClientSocket, server: QSocketServer | QSocketClient) {
 		const interactionId = this.interactionUUID.next();
-		const interaction = new QSocketInteraction(interactionId, socket, server, this.interactions, this.debuger);
+		const interaction = new QSocketInteraction(interactionId, socket, server, this.interactions, this.protocolConfig, this.debuger);
 		this.interactions.set(interactionId, interaction);
 
 		(socket as any).on('close', () => {
