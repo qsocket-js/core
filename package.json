@@ -74,12 +74,6 @@
 			"email": "qpyracuk@gmail.com"
 		}
 	],
-	"dependencies": {
-		"@qsocket/protocol": "^0.0.1-rc"
-	},
-	"peerDependencies": {
-		"@qsocket/protocol": "^0.0.1-rc"
-	},
 	"devDependencies": {
 		"@types/eslint-config-prettier": "^6.11.3",
 		"@types/node": "^22.9.0",
@@ -94,5 +88,8 @@
 	},
 	"engines": {
 		"node": ">=8.0.0"
+	},
+	"dependencies": {
+		"@qsocket/transport": "^0.0.1-rc2"
 	}
 }

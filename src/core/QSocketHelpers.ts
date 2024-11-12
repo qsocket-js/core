@@ -4,11 +4,11 @@ import {
 	EQSocketProtocolContentType,
 	EQSocketProtocolMessageType,
 	IQSocketProtocolChunk,
+	IQSocketProtocolMessage,
 	IQSocketProtocolMessageMetaAck,
 	IQSocketProtocolMessageMetaData,
 	TQSocketProtocolPayloadData,
 } from '@qsocket/protocol';
-import QSocketCompressor from './QSocketCompressor';
 
 /** Маппинг типов контента */
 export const contentTypeMap = new Map<EQSocketProtocolContentType, TQSocketContentType>([
@@ -114,21 +114,7 @@ export function getContentEncodingString(contentEncoding?: EQSocketProtocolConte
 	return contentEncodingMap.get(contentEncoding) ?? 'raw';
 }
 
-/**
- * @description Возвращает конфигурацию протокола по умолчанию
- * @returns
- */
-export function getDefaultProtocolConfig() {
-	return {
-		compressor: {
-			on: true,
-			compressor: new QSocketCompressor(),
-			compressionFromSize: 1024 * 100,
-		},
-	};
-}
-
-export function createErrorMessage(
+export function createErrorAckMessage(
 	sourceChunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>,
 	errors: Error[]
 ): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
@@ -143,4 +129,23 @@ export function createErrorMessage(
 			'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
 		},
 	};
+}
+
+export function createConfirmAckMessage(
+	chunk: IQSocketProtocolChunk,
+	result: TQSocketProtocolPayloadData
+): IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck> {
+	return [
+		{
+			meta: {
+				type: EQSocketProtocolMessageType.ACK,
+				uuid: chunk.meta.uuid,
+			},
+			payload: {
+				data: result,
+				'Content-Type': EQSocketProtocolContentType.BOOLEAN,
+				'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
+			},
+		},
+	];
 }

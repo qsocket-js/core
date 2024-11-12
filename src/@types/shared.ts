@@ -1,8 +1,8 @@
 import { TQSocketProtocolCompressor } from '@qsocket/protocol';
 
-export interface IQSocketProtocolConfig {
-	compressor?: {
-		on: boolean;
+export interface IQSocketConfig {
+	/** Конфигурация компрессии */
+	compression?: {
 		compressor?: TQSocketProtocolCompressor;
 		compressionFromSize?: number;
 	};

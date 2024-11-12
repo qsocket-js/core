@@ -9,32 +9,28 @@ import type {
 	IQSocketProtocolPayload,
 } from '@qsocket/protocol';
 import { EQSocketProtocolContentType, EQSocketProtocolContentEncoding, EQSocketProtocolMessageType } from '@qsocket/protocol';
-import { QSocketProtocol, QSocketProtocolDecodeError, QSocketProtocolEncodeError } from '@qsocket/protocol';
+import { QSocketProtocol } from '@qsocket/protocol';
 //#endregion
 
 //#region Импорт модулей ядра Q-SOCKET
-import type QSocketServer from '../interfaces/QSocketServer';
-import type QSocketClient from '../interfaces/QSocketClient';
 import QSocketNamespace from './QSocketNamespace';
-
 import QSocketUniqueGenerator from './QSocketUniqueGenerator';
 import QSocketDebuger from './QSocketDebuger';
-import QSocketCompressor from './QSocketCompressor';
-import { IQSocketProtocolConfig } from '@/@types/shared';
-import { createErrorMessage } from './QSocketHelpers';
+import { createConfirmAckMessage, createErrorAckMessage } from './QSocketHelpers';
 //#endregion
 
 export default class QSocketInteraction {
-	public readonly uuid: QSocketUniqueGenerator<`${'S' | 'C'}${string}-I${string}-M`>;
 	public readonly id: `${'S' | 'C'}${string}-I${string}`;
-	server: QSocketServer | QSocketClient;
-	socket: TQSocketInteractionInstance;
-	acks: Map<string, (ackResult: IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>[number]['payload'][]) => void> = new Map();
-	namespaces: Map<string, QSocketNamespace> = new Map();
-	protocol: QSocketProtocol;
-	debuger: QSocketDebuger;
-	interactions: Map<`${'C' | 'S'}${string}-I${string}`, QSocketInteraction>;
-	private middlewares: ((
+	public readonly uuid: QSocketUniqueGenerator<`${'S' | 'C'}${string}-I${string}-M`>;
+
+	private readonly socket: TQSocketInteractionInstance;
+	private readonly acks: Map<string, (ackResult: IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>[number]['payload'][]) => void> = new Map();
+	private readonly connectedNamespaces: Map<string, QSocketNamespace> = new Map();
+	private readonly allNamespaces: Map<string, QSocketNamespace> = new Map();
+	private readonly protocol: QSocketProtocol;
+	private readonly debuger: QSocketDebuger;
+	private readonly interactions: Map<`${'C' | 'S'}${string}-I${string}`, QSocketInteraction>;
+	private readonly middlewares: ((
 		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>,
 		socket: TQSocketInteractionInstance
 	) => IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>)[] = [];
@@ -42,45 +38,46 @@ export default class QSocketInteraction {
 	constructor(
 		id: `${'S' | 'C'}${string}-I${string}`,
 		socket: TQSocketInteractionInstance,
-		server: QSocketServer | QSocketClient,
+		allNamespaces: Map<string, QSocketNamespace> = new Map(),
 		interactions: Map<`${'C' | 'S'}${string}-I${string}`, QSocketInteraction>,
-		protocolConfig: IQSocketProtocolConfig,
+		middlewares: ((
+			message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>,
+			socket: TQSocketInteractionInstance
+		) => IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>)[] = [],
+		protocol: QSocketProtocol,
 		debuger: QSocketDebuger
 	) {
 		this.id = id;
 		this.uuid = new QSocketUniqueGenerator(`${this.id}-M`);
 		this.debuger = debuger;
 		this.socket = socket;
-		this.server = server;
 		this.interactions = interactions;
-		this.protocol = this.protocolConfigure(protocolConfig);
+		this.allNamespaces = allNamespaces;
+		this.middlewares = middlewares;
+		this.protocol = protocol;
 		(this.socket as any).on('message', this.onHandle.bind(this));
+		(this.socket as any).on('close', this.closeHandle.bind(this));
+	}
+	public static close(interaction: QSocketInteraction) {
+		interaction.socket.close();
+	}
+	private closeHandle() {
+		this.debuger.log('Запущен процесс уничтожения соединения', this.id);
+		this.acks.clear();
+		this.socket.close();
+		this.connectedNamespaces.forEach((namespace) => QSocketNamespace.deleteClient(namespace, this));
 	}
 
-	static addNamespace(interaction: QSocketInteraction, namespace: QSocketNamespace) {
-		interaction.namespaces.set(namespace.name, namespace);
-		QSocketNamespace.addClient(namespace, interaction);
-	}
-
-	private protocolConfigure(protocolConfig: IQSocketProtocolConfig) {
-		if (protocolConfig.compressor?.on) {
-			const compressor = protocolConfig.compressor.compressor ?? new QSocketCompressor();
-			const compressionFromSize = protocolConfig.compressor.compressionFromSize ?? 100 * 1024;
-			return new QSocketProtocol(compressor, compressionFromSize);
-		} else {
-			return new QSocketProtocol();
-		}
-	}
-
-	/** Главный обработчик сообщений */
-	private async onHandle(data: string | ArrayBuffer) {
-		if (!Buffer.isBuffer(data)) {
+	//#region ПРОСЛУШИВАНИЕ СОБЫТИЙ
+	private async onHandle(data: string | ArrayBuffer | Buffer | Uint8Array) {
+		if (typeof data === 'string') {
 			this.debuger.error('Общение по протоколу QSocket возможно только в формате буфера');
 			return;
 		}
+		const buffer: Uint8Array = new Uint8Array(data);
 
-		let message = await this.protocol.from(data);
-		if (message instanceof QSocketProtocolDecodeError) {
+		let message = await this.protocol.from(buffer);
+		if (message instanceof Error) {
 			this.debuger.error(message);
 			return;
 		}
@@ -113,7 +110,7 @@ export default class QSocketInteraction {
 				}
 			});
 			if (errors.length > 0) {
-				this.sendAck(middlewareResult.map((chunk) => createErrorMessage(chunk, errors)));
+				this.sendAck(middlewareResult.map((chunk) => createErrorAckMessage(chunk, errors)));
 			} else this.onData(middlewareResult);
 		}
 		if (ackChunks.length > 0) {
@@ -126,7 +123,7 @@ export default class QSocketInteraction {
 
 	private onData(message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>) {
 		message.forEach((chunk) => {
-			const namespaceInstance = this.namespaces.get(chunk.meta.namespace);
+			const namespaceInstance = this.connectedNamespaces.get(chunk.meta.namespace);
 			if (!namespaceInstance) {
 				this.debuger.error(`Namespace "${chunk.meta.namespace}" does not exist`);
 				return;
@@ -174,58 +171,63 @@ export default class QSocketInteraction {
 	}
 
 	private onControl(message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaControl>) {
-		message.forEach((chunk) => {
-			let result = false;
+		message.forEach(async (chunk) => {
 			const data = chunk.payload.data as IQSocketControlData;
 
 			if (data.command === 'join-namespace') {
-				const namespace = this.server.getNamespace(data.namespace);
+				const namespace = this.allNamespaces.get(data.namespace);
 				if (!namespace) {
 					this.debuger.error(`Namespace "${data.namespace}" not found`);
 					return;
 				}
-				if (!this.namespaces.has(namespace.name)) {
-					this.namespaces.set(namespace.name, namespace);
+				await this.sendAck(createConfirmAckMessage(chunk, true));
+				if (!this.connectedNamespaces.has(namespace.name)) {
+					this.connectedNamespaces.set(namespace.name, namespace);
 				}
-
 				QSocketNamespace.addClient(namespace, this);
-				result = true;
 			} else if (data.command === 'leave-from-namespace') {
 				if (typeof data.namespace === 'string') {
-					const namespace = this.namespaces.get(data.namespace);
+					const namespace = this.connectedNamespaces.get(data.namespace);
 					if (!namespace) {
 						this.debuger.error(`Namespace "${data.namespace}" not found`);
 						return;
 					}
-					this.namespaces.delete(namespace.name);
+
+					await this.sendAck(createConfirmAckMessage(chunk, true));
+					this.connectedNamespaces.delete(namespace.name);
 					QSocketNamespace.deleteClient(namespace, this);
-					result = true;
 				}
 			} else {
 				this.debuger.error('Unknown control command');
 			}
-
-			this.sendAck([
-				{
-					meta: {
-						type: EQSocketProtocolMessageType.ACK,
-						uuid: chunk.meta.uuid,
-					},
-					payload: {
-						data: result,
-						'Content-Type': EQSocketProtocolContentType.BOOLEAN,
-						'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
-					},
-				},
-			]);
 		});
+	}
+	//#endregion
+
+	//#region ОТПРАВКА ДАННЫХ
+	async broadcast<O extends IQSocketProtocolPayload = IQSocketProtocolPayload>(
+		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>
+	): Promise<O[][][]> {
+		const promises: Promise<O[][] | undefined>[] = [];
+		this.interactions.forEach((interaction) => {
+			if (interaction !== this) {
+				promises.push(interaction.sendData<O>(message));
+			}
+		});
+		const interactionsResults = await Promise.allSettled(promises).then((result) =>
+			result
+				.filter((item) => item.status === 'fulfilled')
+				.map(({ value }) => value)
+				.filter((value) => value !== undefined)
+		);
+		return interactionsResults;
 	}
 
 	async sendData<O extends IQSocketProtocolPayload = IQSocketProtocolPayload>(
 		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>
 	): Promise<O[][] | undefined> {
 		const data = await this.protocol.to(message);
-		if (data instanceof QSocketProtocolEncodeError) {
+		if (data instanceof Error) {
 			this.debuger.error(data);
 			return;
 		}
@@ -255,24 +257,6 @@ export default class QSocketInteraction {
 		return result;
 	}
 
-	async broadcast<O extends IQSocketProtocolPayload = IQSocketProtocolPayload>(
-		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>
-	): Promise<O[][][]> {
-		const promises: Promise<O[][] | undefined>[] = [];
-		this.interactions.forEach((interaction) => {
-			if (interaction !== this) {
-				promises.push(interaction.sendData<O>(message));
-			}
-		});
-		const interactionsResults = await Promise.allSettled(promises).then((result) =>
-			result
-				.filter((item) => item.status === 'fulfilled')
-				.map(({ value }) => value)
-				.filter((value) => value !== undefined)
-		);
-		return interactionsResults;
-	}
-
 	async sendAck(message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>) {
 		const data = await this.protocol.to(message);
 		this.socket.send(data);
@@ -283,7 +267,7 @@ export default class QSocketInteraction {
 	): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>[number]['payload'][][] | void> {
 		const data = await this.protocol.to(message);
 
-		if (data instanceof QSocketProtocolEncodeError) {
+		if (data instanceof Error) {
 			this.debuger.error(data);
 			return;
 		}
@@ -311,17 +295,22 @@ export default class QSocketInteraction {
 			.filter((res) => res.status === 'fulfilled')
 			.map(({ value }) => value);
 	}
+	//#endregion
 
-	/**
-	 * @description Добавляет промежуточный обработчик сообщений
-	 * @param handler
-	 */
-	public use(
-		handler: (
-			message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>,
-			socket: TQSocketInteractionInstance
-		) => IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>
-	): void {
-		this.middlewares.push(handler);
+	//#region NAMESPACES
+	public static joinNamespace(interaction: QSocketInteraction, namespace: QSocketNamespace) {
+		interaction.joinNamespace(namespace);
 	}
+	private joinNamespace(namespace: QSocketNamespace) {
+		this.connectedNamespaces.set(namespace.name, namespace);
+		QSocketNamespace.addClient(namespace, this);
+	}
+	public static leaveNamespace(interaction: QSocketInteraction, namespace: QSocketNamespace) {
+		interaction.leaveNamespace(namespace);
+	}
+	private leaveNamespace(namespace: QSocketNamespace) {
+		this.connectedNamespaces.delete(namespace.name);
+		QSocketNamespace.deleteClient(namespace, this);
+	}
+	//#endregion
 }

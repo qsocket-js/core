@@ -13,85 +13,34 @@ import { EQSocketProtocolMessageType } from '@qsocket/protocol';
 //#region Импорт модулей ядра Q-SOCKET
 import QSocketNamespace from './QSocketNamespace';
 import QSocketInteraction from './QSocketInteraction';
-import { EQSocketListenerType, IQSocketListener, TQSocketContentEncoding, TQSocketContentType, TQSocketListenerCallback } from '@/@types/interface';
+import { EQSocketListenerType, TQSocketContentEncoding, TQSocketContentType } from '@/@types/interface';
 import { determineContentEncoding, determineContentType, getContentEncodingString, getContentTypeString } from './QSocketHelpers';
+import { QSocketConnectionEventEmitter } from './QSocketEventEmetter';
 //#endregion
 
-export default class QSocketConnection {
+export default class QSocketConnection extends QSocketConnectionEventEmitter {
 	//#region Поля класса
 	private interaction: QSocketInteraction;
 	private namespace: QSocketNamespace;
 
-	private events: Map<string, IQSocketListener<any, any>[]> = new Map();
-	private closeListeners: (() => void)[] = [];
 	//#endregion
 
 	//#region Конструктор
 	constructor(interaction: QSocketInteraction, namespace: QSocketNamespace) {
+		super();
 		this.interaction = interaction;
 		this.namespace = namespace;
 	}
 	//#endregion
 
 	//#region Методы управления соединением
-	/**
-	 * @description Подписка на событие завершения соединения с клиентом
-	 */
-	onClose(listener: () => void) {
-		this.closeListeners.push(listener);
-	}
-
-	/**
-	 * @description Закрытие соединения
-	 */
-	private $__close() {
-		this.closeListeners.forEach((listener) => listener());
-	}
 
 	static close(connection: QSocketConnection) {
-		connection.$__close();
+		connection.close();
 	}
-	//#endregion
-
-	//#region Методы подписки на события
-	/**
-	 * @description Подписка на событие с поддержкой нескольких слушателей
-	 */
-	public on<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
-		event: string,
-		listener: TQSocketListenerCallback<I, O>,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
-	) {
-		this.addEventListener(event, listener, EQSocketListenerType.ON, contentType, contentEncoding);
-	}
-
-	/**
-	 * @description Подписка на одноразовое событие
-	 */
-	public once<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
-		event: string,
-		listener: TQSocketListenerCallback<I, O>,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
-	) {
-		this.addEventListener(event, listener, EQSocketListenerType.ONCE, contentType, contentEncoding);
-	}
-
-	/**
-	 * @description Производит отписку от события
-	 */
-	public off<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(event: string, listener: TQSocketListenerCallback<I, O>) {
-		const events = this.events.get(event);
-		if (events === undefined) return false;
-		let spliceIndex = -1;
-		for (let i = events.length - 1; i >= 0; i--) {
-			if (events[i].listener === listener) {
-				spliceIndex = i;
-				break;
-			}
-		}
-		events.splice(spliceIndex, 1);
+	private close() {
+		this.disconnectionListeners.forEach((listener) => listener());
+		this.listeners.clear();
 	}
 	//#endregion
 
@@ -101,7 +50,7 @@ export default class QSocketConnection {
 	 */
 	public async emit<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolPayload>(
 		event: string,
-		data: I,
+		data?: I,
 		contentType?: TQSocketContentType,
 		contentEncoding?: TQSocketContentEncoding
 	): Promise<O[]> {
@@ -121,18 +70,12 @@ export default class QSocketConnection {
 			},
 		];
 		const returns = await this.interaction.sendData<O>(message);
-		if (returns === undefined) {
-			// Если произошла ошибка - возвращаем пустой массив
-			return [];
-		} else {
-			// Если всё корректно - возвращаем первый чанк ответов (он всегда один)
-			return returns[0];
-		}
+		return returns === undefined ? [] : returns[0];
 	}
 
 	public async broadcast<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolPayload>(
 		event: string,
-		data: I,
+		data?: I,
 		contentType?: TQSocketContentType,
 		contentEncoding?: TQSocketContentEncoding
 	): Promise<O[][] | undefined> {
@@ -147,7 +90,6 @@ export default class QSocketConnection {
 				uuid: this.interaction.uuid.next(),
 				namespace: this.namespace.name,
 				event,
-				broadcast: true,
 			},
 		};
 		const interactionsResults = await this.interaction.broadcast<O>([message]);
@@ -167,12 +109,12 @@ export default class QSocketConnection {
 	private async $__pipe(chunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>> {
 		const event = chunk.meta.event;
 		const payload = chunk.payload;
-		const events = this.events.get(event);
+		const events = this.listeners.get(event);
 
 		if (!events) return [];
 
 		// Очистка одноразовых событий из массива слушателей
-		this.events.set(
+		this.listeners.set(
 			event,
 			events.filter((event) => event.type === EQSocketListenerType.ON)
 		);
@@ -186,7 +128,17 @@ export default class QSocketConnection {
 					getContentEncodingString(payload['Content-Encoding'])
 				);
 
-				return this.createAck(chunk.meta.uuid, data, eventInstance.contentType, eventInstance.contentEncoding);
+				return {
+					payload: {
+						data,
+						'Content-Type': determineContentType(data, eventInstance.contentType),
+						'Content-Encoding': determineContentEncoding(eventInstance.contentEncoding),
+					},
+					meta: {
+						type: EQSocketProtocolMessageType.ACK,
+						uuid: chunk.meta.uuid,
+					},
+				} as IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck>;
 			})
 		);
 
@@ -194,52 +146,6 @@ export default class QSocketConnection {
 			if (cur.status === 'fulfilled' && cur.value) acc.push(cur.value);
 			return acc;
 		}, [] as IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>);
-	}
-	//#endregion
-
-	//#region Вспомогательные методы
-	/**
-	 * @description Добавление слушателя события в карту событий
-	 */
-	private addEventListener<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
-		event: string,
-		listener: TQSocketListenerCallback<I, O>,
-		type: EQSocketListenerType,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
-	) {
-		if (!this.events.has(event)) {
-			this.events.set(event, []);
-		}
-
-		this.events.get(event)!.push({
-			type,
-			listener,
-			contentType,
-			contentEncoding,
-		});
-	}
-
-	/**
-	 * @description Создание нового сообщения в формате IQSocketProtocolChunk
-	 */
-	private createAck(
-		uuid: string,
-		data: any,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
-	): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
-		return {
-			payload: {
-				data,
-				'Content-Type': determineContentType(data, contentType),
-				'Content-Encoding': determineContentEncoding(contentEncoding),
-			},
-			meta: {
-				type: EQSocketProtocolMessageType.ACK,
-				uuid: uuid,
-			},
-		};
 	}
 	//#endregion
 }
