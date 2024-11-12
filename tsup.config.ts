@@ -12,5 +12,5 @@ export default defineConfig({
 	skipNodeModulesBundle: false,
 	clean: true,
 	sourcemap: true,
-	platform: 'node',
+	splitting: true,
 });

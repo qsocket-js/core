@@ -1,8 +1,17 @@
 //#region Импорты сущностей QSocket
+import { TQSocketContentEncoding, TQSocketContentType } from '@/@types/interface';
 import QSocketConnection from './QSocketConnection';
 import QSocketDebuger from './QSocketDebuger';
 import QSocketInteraction from './QSocketInteraction';
-import { IQSocketProtocolChunk, IQSocketProtocolMessage, IQSocketProtocolMessageMetaAck, IQSocketProtocolMessageMetaData } from '@qsocket/protocol';
+import {
+	IQSocketProtocolChunk,
+	IQSocketProtocolMessage,
+	IQSocketProtocolMessageMetaAck,
+	IQSocketProtocolMessageMetaData,
+	IQSocketProtocolPayload,
+	TQSocketProtocolPayloadData,
+} from '@qsocket/protocol';
+import { createErrorMessage } from './QSocketHelpers';
 //#endregion
 
 /**
@@ -47,6 +56,7 @@ export default class QSocketNamespace {
 
 	private debuger: QSocketDebuger;
 
+	private middlewares: ((message: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>) => IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>)[] = [];
 	//#endregion
 
 	//#region Конструктор
@@ -108,15 +118,25 @@ export default class QSocketNamespace {
 	 */
 	private async $__pipe(
 		interaction: QSocketInteraction,
-		message: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>
+		chunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>
 	): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>> {
 		const connection = this.connections.get(interaction);
 		if (!connection) {
 			return [];
 		}
-
-		return await QSocketConnection.pipe(connection, message);
+		let errors: Error[] = [];
+		this.middlewares.forEach((middleware) => {
+			try {
+				chunk = middleware(chunk);
+			} catch (error) {
+				if (error instanceof Error) errors.push(error);
+				else errors.push(new Error('Unknown error'));
+			}
+		});
+		if (errors.length > 0) return [createErrorMessage(chunk, errors)];
+		return await QSocketConnection.pipe(connection, chunk);
 	}
+
 	//#endregion
 
 	//#region Методы управления клиентами
@@ -140,7 +160,7 @@ export default class QSocketNamespace {
 	private $__addClient(interaction: QSocketInteraction): void {
 		const connection = new QSocketConnection(interaction, this);
 		this.connections.set(interaction, connection);
-    
+
 		this.connectionListeners.forEach((listener) => {
 			try {
 				listener(connection);
@@ -183,5 +203,26 @@ export default class QSocketNamespace {
 		this.connections.forEach((_, interaction) => {
 			this.$__deleteClient(interaction);
 		});
+	}
+
+	public async emit<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolPayload>(
+		event: string,
+		data: I,
+		contentType?: TQSocketContentType,
+		contentEncoding?: TQSocketContentEncoding
+	): Promise<O[][]> {
+		const promises: Promise<O[]>[] = [];
+		this.connections.forEach((connection) => {
+			promises.push(connection.emit<I, O>(event, data, contentType, contentEncoding));
+		});
+		return (await Promise.allSettled(promises)).filter((res) => res.status === 'fulfilled').map(({ value }) => value);
+	}
+
+	/**
+	 * @description Добавляет промежуточный обработчик чанков сообщения
+	 * @param handler
+	 */
+	public use(handler: (chunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>) => IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>): void {
+		this.middlewares.push(handler);
 	}
 }

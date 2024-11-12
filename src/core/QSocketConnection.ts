@@ -4,6 +4,7 @@ import type {
 	IQSocketProtocolMessage,
 	IQSocketProtocolMessageMetaAck,
 	IQSocketProtocolMessageMetaData,
+	IQSocketProtocolPayload,
 	TQSocketProtocolPayloadData,
 } from '@qsocket/protocol';
 import { EQSocketProtocolMessageType } from '@qsocket/protocol';
@@ -76,40 +77,65 @@ export default class QSocketConnection {
 	) {
 		this.addEventListener(event, listener, EQSocketListenerType.ONCE, contentType, contentEncoding);
 	}
+
+	/**
+	 * @description Производит отписку от события
+	 */
+	public off<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(event: string, listener: TQSocketListenerCallback<I, O>) {
+		const events = this.events.get(event);
+		if (events === undefined) return false;
+		let spliceIndex = -1;
+		for (let i = events.length - 1; i >= 0; i--) {
+			if (events[i].listener === listener) {
+				spliceIndex = i;
+				break;
+			}
+		}
+		events.splice(spliceIndex, 1);
+	}
 	//#endregion
 
 	//#region Методы отправки и передачи данных
 	/**
 	 * @description Отправка данных на связанный клиент
 	 */
-	public async emit<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolMessage>(
+	public async emit<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolPayload>(
 		event: string,
 		data: I,
 		contentType?: TQSocketContentType,
 		contentEncoding?: TQSocketContentEncoding
-	): Promise<O> {
-		const message: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData> = {
-			payload: {
-				data,
-				'Content-Type': determineContentType(data, contentType),
-				'Content-Encoding': determineContentEncoding(contentEncoding),
+	): Promise<O[]> {
+		const message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData> = [
+			{
+				payload: {
+					data,
+					'Content-Type': determineContentType(data, contentType),
+					'Content-Encoding': determineContentEncoding(contentEncoding),
+				},
+				meta: {
+					type: EQSocketProtocolMessageType.DATA,
+					uuid: this.interaction.uuid.next(),
+					namespace: this.namespace.name,
+					event,
+				},
 			},
-			meta: {
-				type: EQSocketProtocolMessageType.DATA,
-				uuid: this.interaction.uuid.next(),
-				namespace: this.namespace.name,
-				event,
-			},
-		};
-		return (await this.interaction.sendData([message])) as O;
+		];
+		const returns = await this.interaction.sendData<O>(message);
+		if (returns === undefined) {
+			// Если произошла ошибка - возвращаем пустой массив
+			return [];
+		} else {
+			// Если всё корректно - возвращаем первый чанк ответов (он всегда один)
+			return returns[0];
+		}
 	}
 
-	public async broadcast<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolMessage>(
+	public async broadcast<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolPayload>(
 		event: string,
 		data: I,
 		contentType?: TQSocketContentType,
 		contentEncoding?: TQSocketContentEncoding
-	) {
+	): Promise<O[][] | undefined> {
 		const message: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData> = {
 			payload: {
 				data,
@@ -124,7 +150,8 @@ export default class QSocketConnection {
 				broadcast: true,
 			},
 		};
-		return (await this.interaction.sendData([message])) as O;
+		const interactionsResults = await this.interaction.broadcast<O>([message]);
+		return interactionsResults.map((interactionResult) => interactionResult[0]);
 	}
 
 	static async pipe(

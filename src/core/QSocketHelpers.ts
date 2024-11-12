@@ -1,5 +1,13 @@
 import { TQSocketContentEncoding, TQSocketContentType } from '@/@types/interface';
-import { EQSocketProtocolContentEncoding, EQSocketProtocolContentType, TQSocketProtocolPayloadData } from '@qsocket/protocol';
+import {
+	EQSocketProtocolContentEncoding,
+	EQSocketProtocolContentType,
+	EQSocketProtocolMessageType,
+	IQSocketProtocolChunk,
+	IQSocketProtocolMessageMetaAck,
+	IQSocketProtocolMessageMetaData,
+	TQSocketProtocolPayloadData,
+} from '@qsocket/protocol';
 import QSocketCompressor from './QSocketCompressor';
 
 /** Маппинг типов контента */
@@ -116,6 +124,23 @@ export function getDefaultProtocolConfig() {
 			on: true,
 			compressor: new QSocketCompressor(),
 			compressionFromSize: 1024 * 100,
+		},
+	};
+}
+
+export function createErrorMessage(
+	sourceChunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>,
+	errors: Error[]
+): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
+	return {
+		meta: {
+			type: EQSocketProtocolMessageType.ACK,
+			uuid: sourceChunk.meta.uuid,
+		},
+		payload: {
+			data: errors.map((error) => error.message),
+			'Content-Type': EQSocketProtocolContentType.JSON,
+			'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
 		},
 	};
 }
