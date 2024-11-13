@@ -20,4 +20,7 @@ export type IQSocketControlData =
 	| {
 			command: 'leave-from-namespace';
 			namespace: string;
+	  }
+	| {
+			command: 'ping';
 	  };

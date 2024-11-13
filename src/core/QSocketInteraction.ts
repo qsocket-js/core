@@ -16,7 +16,7 @@ import { QSocketProtocol } from '@qsocket/protocol';
 import QSocketNamespace from './QSocketNamespace';
 import QSocketUniqueGenerator from './QSocketUniqueGenerator';
 import QSocketDebuger from './QSocketDebuger';
-import { createConfirmAckMessage, createErrorAckMessage } from './QSocketHelpers';
+import { createConfirmAckMessage, createErrorAckMessage, createPongMessage } from './QSocketHelpers';
 //#endregion
 
 export default class QSocketInteraction {
@@ -56,10 +56,10 @@ export default class QSocketInteraction {
 		this.middlewares = middlewares;
 		this.protocol = protocol;
 		(this.socket as any).on('message', this.onHandle.bind(this));
-		(this.socket as any).on('close', this.closeHandle.bind(this));
 	}
 	public static close(interaction: QSocketInteraction) {
 		interaction.socket.close();
+		interaction.closeHandle();
 	}
 	private closeHandle() {
 		this.debuger.log('Запущен процесс уничтожения соединения', this.id);
@@ -173,8 +173,9 @@ export default class QSocketInteraction {
 	private onControl(message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaControl>) {
 		message.forEach(async (chunk) => {
 			const data = chunk.payload.data as IQSocketControlData;
-
-			if (data.command === 'join-namespace') {
+			if (data.command === 'ping') {
+				await this.sendAck(createPongMessage(chunk.meta.uuid));
+			} else if (data.command === 'join-namespace') {
 				const namespace = this.allNamespaces.get(data.namespace);
 				if (!namespace) {
 					this.debuger.error(`Namespace "${data.namespace}" not found`);

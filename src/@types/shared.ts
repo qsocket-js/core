@@ -1,13 +1,5 @@
 import { TQSocketProtocolCompressor } from '@qsocket/protocol';
 
-export interface IQSocketConfig {
-	/** Конфигурация компрессии */
-	compression?: {
-		compressor?: TQSocketProtocolCompressor;
-		compressionFromSize?: number;
-	};
-}
-
 export interface IQSocketLogger {
 	log(...message: any[]): void;
 	error(...message: any[]): void;
@@ -16,11 +8,30 @@ export interface IQSocketLogger {
 	warn(...message: any[]): void;
 }
 
-export interface IQSocketDebugConfig {
-	/** Включить отладку */
-	on: boolean;
-	/** Инстанс логгера */
-	logger?: IQSocketLogger;
-	/** Префикс перед всеми записями */
-	prefix?: string;
+export interface IQSocketConfigBase {
+	/** Конфигурация компрессии */
+	compression?: {
+		compressor?: TQSocketProtocolCompressor;
+		compressionFromSize?: number;
+	};
+	debug: {
+		/** Включить отладку */
+		enabled: boolean;
+		/** Инстанс логгера */
+		logger?: IQSocketLogger;
+		/** Префикс перед всеми записями */
+		prefix?: string;
+	};
 }
+
+export interface IQSocketClientConfig extends IQSocketConfigBase {
+	/** Конфигурация переподключения */
+	reconnection?: {
+		enabled: boolean; // Включение/отключение автоматического переподключения
+		maxAttempts?: number; // Максимальное количество попыток переподключения
+		delay?: number; // Задержка между попытками переподключения в миллисекундах
+		exponentialBackoff?: boolean; // Если true, задержка будет увеличиваться экспоненциально
+	};
+}
+
+export interface IQSocketServerConfig extends IQSocketConfigBase {}

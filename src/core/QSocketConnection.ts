@@ -69,6 +69,7 @@ export default class QSocketConnection extends QSocketConnectionEventEmitter {
 				},
 			},
 		];
+		console.log('ПОЛЕТЕЛО СООБЩЕНИЦЕ', message);
 		const returns = await this.interaction.sendData<O>(message);
 		return returns === undefined ? [] : returns[0];
 	}

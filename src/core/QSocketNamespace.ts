@@ -45,15 +45,15 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 
 	//#region Методы событий
 
-	public async emit<I extends TQSocketProtocolPayloadData, O extends IQSocketProtocolPayload>(
-		event: string,
-		data?: I,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
-	): Promise<O[][]> {
-		const promises: Promise<O[]>[] = [];
+	public async emit<
+		I extends TQSocketProtocolPayloadData,
+		O extends TQSocketProtocolPayloadData,
+		P extends IQSocketProtocolPayload<O> = IQSocketProtocolPayload<O>,
+	>(event: string, data?: I, contentType?: TQSocketContentType, contentEncoding?: TQSocketContentEncoding): Promise<P[][]> {
+		const promises: Promise<P[]>[] = [];
+		console.log('ПЫТАЕТСЯ В НЭЙМСПЕЙСНЫЙ ЭМИТ', this.connections, data);
 		this.connections.forEach((connection) => {
-			promises.push(connection.emit<I, O>(event, data, contentType, contentEncoding));
+			promises.push(connection.emit<I, P>(event, data, contentType, contentEncoding));
 		});
 		return (await Promise.allSettled(promises)).filter((res) => res.status === 'fulfilled').map(({ value }) => value);
 	}

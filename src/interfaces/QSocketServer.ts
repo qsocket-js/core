@@ -1,16 +1,22 @@
-//#region Импорт модулей ядра Q-SOCKET
+//#region Импорт типов
+import type { TQSocketServer, TQSocketServerSocket } from '@/@types/transport';
+import type { IQSocketServerConfig } from '@/@types/shared';
+//#endregion
+
+//#region Импорт базового класса
 import QSocketBase from './QSocketBase';
-import { TQSocketServer, TQSocketServerSocket } from '@/@types/transport';
-import { IQSocketDebugConfig } from '@/@types/shared';
-import { IQSocketConfig } from '@/@types/shared';
 //#endregion
 
 export default class QSocketServer extends QSocketBase {
 	private server: TQSocketServer;
-	constructor(transport: TQSocketServer, protocolConfig: IQSocketConfig, debugConfig?: IQSocketDebugConfig) {
-		super('server', protocolConfig, debugConfig);
+
+	constructor(transport: TQSocketServer, config: IQSocketServerConfig) {
+		super('server', config);
 		this.server = transport;
 		this.server.on('connection', (socket: any) => this.connectionHandle(socket as unknown as TQSocketServerSocket));
 	}
-	protected override joinNamespaceHandle() {}
+
+	//#region Абстрактные методы
+	protected override afterCreatingNamespace() {}
+	//#endregion
 }

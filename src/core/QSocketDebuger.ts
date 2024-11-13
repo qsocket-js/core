@@ -1,23 +1,22 @@
-import { IQSocketDebugConfig, IQSocketLogger } from '@/@types/shared';
+import { IQSocketConfigBase, IQSocketLogger } from '@/@types/shared';
 
 export default class QSocketDebuger {
 	/** Включен ли режим отладки */
-	private debug: boolean;
-
+	private readonly enabled: boolean;
 	/** Префикс для сообщений логирования */
-	private prefix: string;
-
+	private readonly prefix: string;
 	/** Логгер, используемый для вывода сообщений */
-	private logger: IQSocketLogger = console;
+	private readonly logger: IQSocketLogger = console;
 
 	/**
 	 * Конструктор класса QSocketUtils.
-	 * @param {IQSocketDebugConfig} [debugConfig] - Конфигурация для режима отладки.
+	 * @param {IQSocketConfigBase['debug']} [debugConfig] - Конфигурация для режима отладки.
 	 */
-	constructor(debugConfig?: IQSocketDebugConfig) {
-		this.debug = debugConfig?.on ?? false;
-		this.logger = debugConfig?.logger || console;
-		this.prefix = debugConfig?.prefix || '[Q-SOCKET]';
+	constructor(debugConfig?: IQSocketConfigBase['debug']) {
+		const { enabled = false, logger = console, prefix = '' } = debugConfig ?? {};
+		this.enabled = enabled;
+		this.logger = logger;
+		this.prefix = prefix;
 	}
 
 	/**
@@ -25,7 +24,7 @@ export default class QSocketDebuger {
 	 * @param {...any[]} message - Сообщение или данные для логирования.
 	 */
 	public log(...message: any[]): void {
-		if (this.debug) this.logger.log(this.prefix, ...message);
+		if (this.enabled) this.logger.log(this.prefix, ...message);
 	}
 
 	/**
@@ -33,7 +32,7 @@ export default class QSocketDebuger {
 	 * @param {...any[]} message - Сообщение или данные для логирования ошибок.
 	 */
 	public error(...message: any[]): void {
-		if (this.debug) this.logger.error(this.prefix, ...message);
+		if (this.enabled) this.logger.error(this.prefix, ...message);
 	}
 
 	/**
@@ -41,7 +40,7 @@ export default class QSocketDebuger {
 	 * @param {...any[]} message - Сообщение или данные для информационного логирования.
 	 */
 	public info(...message: any[]): void {
-		if (this.debug) this.logger.info(this.prefix, ...message);
+		if (this.enabled) this.logger.info(this.prefix, ...message);
 	}
 
 	/**
@@ -49,7 +48,7 @@ export default class QSocketDebuger {
 	 * @param {...any[]} message - Сообщение или данные для логирования предупреждений.
 	 */
 	public warn(...message: any[]): void {
-		if (this.debug) this.logger.warn(this.prefix, ...message);
+		if (this.enabled) this.logger.warn(this.prefix, ...message);
 	}
 	//#endregion
 }

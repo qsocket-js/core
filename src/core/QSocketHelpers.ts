@@ -6,6 +6,7 @@ import {
 	IQSocketProtocolChunk,
 	IQSocketProtocolMessage,
 	IQSocketProtocolMessageMetaAck,
+	IQSocketProtocolMessageMetaControl,
 	IQSocketProtocolMessageMetaData,
 	TQSocketProtocolPayloadData,
 } from '@qsocket/protocol';
@@ -144,6 +145,40 @@ export function createConfirmAckMessage(
 			payload: {
 				data: result,
 				'Content-Type': EQSocketProtocolContentType.BOOLEAN,
+				'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
+			},
+		},
+	];
+}
+
+export function createPingMessage(uuid: string): IQSocketProtocolMessage<IQSocketProtocolMessageMetaControl> {
+	return [
+		{
+			meta: {
+				type: EQSocketProtocolMessageType.CONTROL,
+				uuid: uuid,
+			},
+			payload: {
+				data: {
+					command: 'ping',
+				},
+				'Content-Type': EQSocketProtocolContentType.STRING,
+				'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
+			},
+		},
+	];
+}
+
+export function createPongMessage(uuid: string): IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck> {
+	return [
+		{
+			meta: {
+				type: EQSocketProtocolMessageType.ACK,
+				uuid: uuid,
+			},
+			payload: {
+				data: 'pong',
+				'Content-Type': EQSocketProtocolContentType.STRING,
 				'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
 			},
 		},

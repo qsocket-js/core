@@ -1,6 +1,6 @@
 //#region Импорт общих типов
 import type { TQSocketClientSocket, TQSocketInteractionInstance, TQSocketServerSocket } from '@/@types/transport';
-import type { IQSocketDebugConfig, IQSocketConfig } from '../@types/shared';
+import type { IQSocketConfigBase } from '../@types/shared';
 //#endregion
 
 //#region Импорт модулей ядра Q-SOCKET
@@ -33,15 +33,10 @@ export default abstract class QSocketBase {
 		socket: TQSocketInteractionInstance
 	) => IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>)[] = [];
 
-	/**
-	/**
-	 * Конструктор класса QSocketBase.
-	 * @param {IQSocketDebugConfig} [debugConfig] - Конфигурация для режима отладки.
-	 */
-	constructor(type: 'client' | 'server', protocolConfig?: IQSocketConfig, debugConfig?: IQSocketDebugConfig) {
+	constructor(type: 'client' | 'server', config?: IQSocketConfigBase) {
 		this.type = type;
-		this.debuger = new QSocketDebuger(debugConfig);
-		this.protocol = new QSocketProtocol(protocolConfig?.compression?.compressor, protocolConfig?.compression?.compressionFromSize ?? 1024 * 100);
+		this.debuger = new QSocketDebuger(config?.debug);
+		this.protocol = new QSocketProtocol(config?.compression?.compressor, config?.compression?.compressionFromSize ?? 1024 * 100);
 		const prefix: 'S' | 'C' = type === 'server' ? 'S' : 'C';
 		const generator = type === 'server' ? serverUUID : clientUUID;
 		this.id = `${prefix}${generator.next()}`;
@@ -53,10 +48,11 @@ export default abstract class QSocketBase {
 		const interactionId = this.interactionUUID.next();
 		const interaction = new QSocketInteraction(interactionId, socket, this.namespaces, this.interactions, this.middlewares, this.protocol, this.debuger);
 		this.interactions.set(interactionId, interaction);
-		(socket as any).on('close', () => this.closeInteraction(interactionId));
+		(socket as any).on('close', () => this.closeInteraction(interactionId, interaction));
 	}
 
-	protected closeInteraction(interactionId: `${'C' | 'S'}${string}-I${string}`) {
+	protected closeInteraction(interactionId: `${'C' | 'S'}${string}-I${string}`, interaction: QSocketInteraction) {
+		QSocketInteraction.close(interaction);
 		this.interactions.delete(interactionId);
 	}
 
@@ -73,7 +69,7 @@ export default abstract class QSocketBase {
 		const namespace = new QSocketNamespace(name, this.debuger);
 		this.namespaces.set(name, namespace);
 		this.debuger.info(`The namespace "${name}" has been created.`);
-		this.joinNamespaceHandle(namespace);
+		this.afterCreatingNamespace(namespace);
 		return namespace;
 	}
 
@@ -97,14 +93,6 @@ export default abstract class QSocketBase {
 	}
 
 	/**
-	 * Абстрактный метод для обработки логики после создания пространства имён.
-	 * @param {QSocketNamespace} namespace - Пространство имён, требующее обработки.
-	 */
-	protected abstract joinNamespaceHandle(namespace: QSocketNamespace): void;
-
-	protected abstract reconnectionHandle(): void;
-
-	/**
 	 * @description Добавляет промежуточный обработчик сообщений
 	 * @param handler
 	 */
@@ -116,4 +104,6 @@ export default abstract class QSocketBase {
 	): void {
 		this.middlewares.push(handler);
 	}
+
+	protected abstract afterCreatingNamespace(namespace: QSocketNamespace): void;
 }
