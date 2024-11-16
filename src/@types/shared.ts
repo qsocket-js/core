@@ -9,6 +9,11 @@ export interface IQSocketLogger {
 }
 
 export interface IQSocketConfigBase {
+	/**  */
+	timeout?: {
+		value?: number;
+		actionAfrer?: 'none' | 'resend';
+	};
 	/** Конфигурация компрессии */
 	compression?: {
 		compressor?: TQSocketProtocolCompressor;

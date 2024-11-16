@@ -1,6 +1,13 @@
 import { EQSocketListenerType, IQSocketListener, TQSocketContentEncoding, TQSocketContentType, TQSocketListenerCallback } from '@/@types/interface';
 import QSocketConnection from './QSocketConnection';
-import { TQSocketProtocolPayloadData } from '@qsocket/protocol';
+import {
+	IQSocketProtocolChunk,
+	IQSocketProtocolMessage,
+	IQSocketProtocolMessageMetaAck,
+	IQSocketProtocolMessageMetaData,
+	TQSocketProtocolPayloadData,
+} from '@qsocket/protocol';
+import { createDataAckChunk, getContentEncodingString, getContentTypeString } from './QSocketHelpers';
 
 class QSocketEventEmetterBase {
 	/**
@@ -54,6 +61,34 @@ class QSocketEventEmetterBase {
 
 		const index = listeners.findIndex((item) => item.listener === listener);
 		if (index !== -1) listeners.splice(index, 1);
+	}
+
+	protected async executor(chunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>> {
+		const event = chunk.meta.event;
+		const listeners = this.listeners.get(event);
+		if (!listeners) return [];
+		const payload = chunk.payload;
+
+		// Очистка одноразовых событий из массива слушателей
+		this.listeners.set(
+			event,
+			listeners.filter(({ type }) => type === EQSocketListenerType.ON)
+		);
+
+		// Выполнение всех обработчиков и сбор результата
+		const results = await Promise.allSettled(
+			listeners.map(async (eventInstance) => {
+				const data = await Promise.resolve(
+					eventInstance.listener(payload.data, getContentTypeString(payload['Content-Type']), getContentEncodingString(payload['Content-Encoding']))
+				);
+				return createDataAckChunk(chunk, data, eventInstance.contentType, eventInstance.contentEncoding);
+			})
+		);
+
+		return results.reduce<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>>((acc, cur) => {
+			if (cur.status === 'fulfilled' && cur.value) acc.push(cur.value);
+			return acc;
+		}, []);
 	}
 }
 
@@ -189,7 +224,7 @@ export class QSocketConnectionEventEmitter extends QSocketEventEmetterBase {
 	}
 }
 
-export class QSocketNamespaceEventEmitter extends QSocketEventEmetterBase {
+export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBase {
 	/**
 	 * Registers a persistent listener for the connection event.
 	 * @example
@@ -245,6 +280,7 @@ export class QSocketNamespaceEventEmitter extends QSocketEventEmetterBase {
 	) {
 		if (event === 'connection') {
 			this.connectionListeners.push(listener as (connection: QSocketConnection) => void);
+			this.addConnectionListennerHandle(listener as (connection: QSocketConnection) => void);
 		} else if (event === 'disconnection') {
 			this.disconnectionListeners.push(listener as () => void);
 		} else {
@@ -307,6 +343,7 @@ export class QSocketNamespaceEventEmitter extends QSocketEventEmetterBase {
 	) {
 		if (event === 'connection') {
 			this.connectionListeners.push(listener as (connection: QSocketConnection) => void);
+			this.addConnectionListennerHandle(listener as (connection: QSocketConnection) => void);
 		} else if (event === 'disconnection') {
 			this.disconnectionListeners.push(listener as () => void);
 		} else {
@@ -376,4 +413,6 @@ export class QSocketNamespaceEventEmitter extends QSocketEventEmetterBase {
 			this.removeEventListener(event, listener);
 		}
 	}
+
+	protected abstract addConnectionListennerHandle(listenner: (connection: QSocketConnection) => void): void;
 }

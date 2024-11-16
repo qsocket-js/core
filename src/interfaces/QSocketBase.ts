@@ -8,7 +8,16 @@ import QSocketNamespace from '@/core/QSocketNamespace';
 import QSocketDebuger from '@/core/QSocketDebuger';
 import QSocketInteraction from '@/core/QSocketInteraction';
 import QSocketUniqueGenerator from '@/core/QSocketUniqueGenerator';
-import { IQSocketProtocolMessage, IQSocketProtocolMessageMetaData, QSocketProtocol } from '@qsocket/protocol';
+import {
+	EQSocketProtocolContentEncoding,
+	EQSocketProtocolContentType,
+	EQSocketProtocolMessageType,
+	IQSocketProtocolMessage,
+	IQSocketProtocolMessageMetaControl,
+	IQSocketProtocolMessageMetaData,
+	QSocketProtocol,
+} from '@qsocket/protocol';
+import { TMakeRequired } from '@/@types/utility';
 
 //#endregion
 
@@ -28,6 +37,10 @@ export default abstract class QSocketBase {
 	protected readonly debuger: QSocketDebuger;
 	protected readonly interactions: Map<`${'C' | 'S'}${string}-I${string}`, QSocketInteraction> = new Map();
 	protected readonly protocol: QSocketProtocol;
+	protected readonly timeout: TMakeRequired<TMakeRequired<IQSocketConfigBase>['timeout']> = {
+		value: 60000,
+		actionAfrer: 'none',
+	};
 	private readonly middlewares: ((
 		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>,
 		socket: TQSocketInteractionInstance
@@ -37,6 +50,8 @@ export default abstract class QSocketBase {
 		this.type = type;
 		this.debuger = new QSocketDebuger(config?.debug);
 		this.protocol = new QSocketProtocol(config?.compression?.compressor, config?.compression?.compressionFromSize ?? 1024 * 100);
+		if (config?.timeout?.value !== undefined) this.timeout.value = config.timeout.value;
+		if (config?.timeout?.actionAfrer !== undefined) this.timeout.actionAfrer = config.timeout.actionAfrer;
 		const prefix: 'S' | 'C' = type === 'server' ? 'S' : 'C';
 		const generator = type === 'server' ? serverUUID : clientUUID;
 		this.id = `${prefix}${generator.next()}`;
@@ -46,7 +61,7 @@ export default abstract class QSocketBase {
 
 	protected connectionHandle(socket: TQSocketServerSocket | TQSocketClientSocket) {
 		const interactionId = this.interactionUUID.next();
-		const interaction = new QSocketInteraction(interactionId, socket, this.namespaces, this.interactions, this.middlewares, this.protocol, this.debuger);
+		const interaction = new QSocketInteraction(interactionId, socket, this.namespaces, this.interactions, this.protocol, this.timeout, this.debuger);
 		this.interactions.set(interactionId, interaction);
 		(socket as any).on('close', () => this.closeInteraction(interactionId, interaction));
 	}
@@ -68,8 +83,8 @@ export default abstract class QSocketBase {
 		}
 		const namespace = new QSocketNamespace(name, this.debuger);
 		this.namespaces.set(name, namespace);
-		this.debuger.info(`The namespace "${name}" has been created.`);
-		this.afterCreatingNamespace(namespace);
+
+		this.namespaceControl(namespace, 'join-namespace');
 		return namespace;
 	}
 
@@ -78,18 +93,16 @@ export default abstract class QSocketBase {
 	 * @param {string} name - Имя удаляемого пространства имён.
 	 * @returns {boolean} Возвращает `true`, если пространство имён было удалено, иначе `false`.
 	 */
-	public deleteNamespace(name: string): boolean {
+	public deleteNamespace(name: string): void {
 		const namespace = this.namespaces.get(name);
 		if (namespace === undefined) {
 			this.debuger.warn(`The namespace '${name}' does not exist.`);
-			return false;
+			return;
 		}
 		this.namespaces.delete(name);
-		namespace.close();
-
-		this.interactions.forEach((interaction) => QSocketInteraction.leaveNamespace(interaction, namespace));
-		this.debuger.info(`The namespace "${name}" has been removed.`);
-		return true;
+		QSocketNamespace.destroy(namespace);
+		this.namespaceControl(namespace, 'leave-namespace');
+		return;
 	}
 
 	/**
@@ -105,5 +118,49 @@ export default abstract class QSocketBase {
 		this.middlewares.push(handler);
 	}
 
-	protected abstract afterCreatingNamespace(namespace: QSocketNamespace): void;
+	//#region Методы, работающие ТОЛЬКО НА КЛИЕНТЕ
+	protected async namespaceControl(namespace: QSocketNamespace, command: 'join-namespace' | 'leave-namespace'): Promise<boolean> {
+		if (this.type !== 'client') return true;
+		const message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaControl> = [
+			{
+				meta: {
+					type: EQSocketProtocolMessageType.CONTROL,
+					uuid: this.uuid.next(),
+				},
+				payload: {
+					data: {
+						command,
+						namespace: namespace.name,
+					},
+					'Content-Type': EQSocketProtocolContentType.JSON,
+					'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
+				},
+			},
+		];
+
+		const promises: Promise<boolean>[] = [];
+		this.interactions.forEach((interaction) => {
+			promises.push(
+				interaction
+					.sendCommand(message)
+					.then(() => {
+						if (command === 'join-namespace') {
+							QSocketInteraction.joinNamespace(interaction, namespace);
+							this.debuger.info(`The namespace "${namespace.name}" has been created.`);
+						} else if (command === 'leave-namespace') {
+							QSocketInteraction.leaveNamespace(interaction, namespace);
+							this.debuger.info(`The namespace "${namespace.name}" has been removed.`);
+						}
+						return true;
+					})
+					.catch(() => {
+						this.debuger.error(`Ошибка при ${command === 'join-namespace' ? 'подключении к' : 'отключении от'} пространству имён "${namespace.name}"`);
+						return false;
+					})
+			);
+		});
+
+		return (await Promise.allSettled(promises)).every((item) => item.status === 'fulfilled');
+	}
+	//#endregion
 }

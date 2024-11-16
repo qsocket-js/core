@@ -11,17 +11,15 @@ import {
 	IQSocketProtocolPayload,
 	TQSocketProtocolPayloadData,
 } from '@qsocket/protocol';
-import { createErrorAckMessage } from './QSocketHelpers';
+
 import { QSocketNamespaceEventEmitter } from './QSocketEventEmetter';
+import { createDataAckChunk } from './QSocketHelpers';
 //#endregion
 
 export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 	private readonly _name: string;
 	private readonly connections: Map<QSocketInteraction, QSocketConnection> = new Map();
 	private readonly debuger: QSocketDebuger;
-	private readonly middlewares: ((
-		message: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>
-	) => IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>)[] = [];
 
 	public get name(): string {
 		return this._name;
@@ -33,27 +31,24 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 		this.debuger = debuger;
 	}
 
-	public use(handler: (chunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>) => IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>): void {
-		this.middlewares.push(handler);
-	}
-
-	public close(): void {
-		this.connections.forEach((_, interaction) => {
-			this.$__deleteClient(interaction);
-		});
-	}
-
 	//#region Методы событий
 
 	public async emit<
 		I extends TQSocketProtocolPayloadData,
 		O extends TQSocketProtocolPayloadData,
 		P extends IQSocketProtocolPayload<O> = IQSocketProtocolPayload<O>,
-	>(event: string, data?: I, contentType?: TQSocketContentType, contentEncoding?: TQSocketContentEncoding): Promise<P[][]> {
+	>(
+		event: string,
+		data?: I,
+		options?: {
+			timeout?: number;
+			contentType?: TQSocketContentType;
+			contentEncoding?: TQSocketContentEncoding;
+		}
+	): Promise<P[][]> {
 		const promises: Promise<P[]>[] = [];
-		console.log('ПЫТАЕТСЯ В НЭЙМСПЕЙСНЫЙ ЭМИТ', this.connections, data);
 		this.connections.forEach((connection) => {
-			promises.push(connection.emit<I, P>(event, data, contentType, contentEncoding));
+			promises.push(connection.emit<I, P>(event, data, options));
 		});
 		return (await Promise.allSettled(promises)).filter((res) => res.status === 'fulfilled').map(({ value }) => value);
 	}
@@ -64,68 +59,57 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 	public static async pipe(
 		interaction: QSocketInteraction,
 		namespace: QSocketNamespace,
-		message: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>
-	): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>> {
-		return await namespace.$__pipe(interaction, message);
-	}
-
-	private async $__pipe(
-		interaction: QSocketInteraction,
 		chunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>
 	): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>> {
-		const connection = this.connections.get(interaction);
-		if (!connection) {
-			return [];
-		}
-		let errors: Error[] = [];
-		this.middlewares.forEach((middleware) => {
-			try {
-				chunk = middleware(chunk);
-			} catch (error) {
-				if (error instanceof Error) errors.push(error);
-				else errors.push(new Error('Unknown error'));
-			}
-		});
-		if (errors.length > 0) return [createErrorAckMessage(chunk, errors)];
-		return await QSocketConnection.pipe(connection, chunk);
+		const connection = namespace.connections.get(interaction);
+		if (!connection) return [];
+		const namespaceResult = await namespace.executor(chunk);
+		const connectionResult = await QSocketConnection.pipe(connection, chunk);
+		const acks = [...namespaceResult, ...connectionResult];
+		if (acks.length > 0) return acks;
+		else return [createDataAckChunk(chunk, undefined, 'undefined', 'raw')];
 	}
 
 	//#endregion
 
 	//#region Методы управления клиентами
-	public static addClient(namespace: QSocketNamespace, interaction: QSocketInteraction): void {
-		namespace.$__addClient(interaction);
+	public static async addClient(namespace: QSocketNamespace, interaction: QSocketInteraction) {
+		const connection = new QSocketConnection(interaction, namespace);
+		namespace.connections.set(interaction, connection);
+		await Promise.allSettled(
+			namespace.connectionListeners.map(async (listener) => {
+				try {
+					return await Promise.resolve(listener(connection));
+				} catch (error) {
+					return namespace.debuger.error('Connection event error:', error);
+				}
+			})
+		);
+		namespace.debuger.info(`Interaction "${interaction.id}" join namespace "${namespace.name}"`);
 	}
 
-	private $__addClient(interaction: QSocketInteraction): void {
-		const connection = new QSocketConnection(interaction, this);
-		this.connections.set(interaction, connection);
-		this.connectionListeners.forEach((listener) => {
-			try {
-				listener(connection);
-			} catch (error) {
-				this.debuger.error('Connection event error:', error);
-			}
-		});
-		this.debuger.info(`Interaction "${interaction.id}" join namespace "${this.name}"`);
+	public static async deleteClient(namespace: QSocketNamespace, interaction: QSocketInteraction) {
+		const connection = namespace.connections.get(interaction);
+		namespace.connections.delete(interaction);
+		await Promise.allSettled(
+			namespace.disconnectionListeners.map(async (listener) => {
+				try {
+					return await Promise.resolve(listener());
+				} catch (error) {
+					return namespace.debuger.error('Disconnection event error:', error);
+				}
+			})
+		);
+		namespace.debuger.info(`Interaction "${interaction.id}" leave namespace "${namespace.name}"`);
+		if (connection !== undefined) QSocketConnection.close(connection);
 	}
 
-	public static deleteClient(namespace: QSocketNamespace, interaction: QSocketInteraction): void {
-		namespace.$__deleteClient(interaction);
-	}
-
-	private $__deleteClient(interaction: QSocketInteraction): void {
-		const connection = this.connections.get(interaction);
-		this.connections.delete(interaction);
-		this.disconnectionListeners.forEach((listener) => {
-			try {
-				listener();
-			} catch {}
-		});
-		this.debuger.info(`Interaction "${interaction.id}" leave namespace "${this.name}"`);
-		if (connection !== undefined) {
-			QSocketConnection.close(connection);
-		}
+	public static destroy(namespace: QSocketNamespace) {
+		namespace.connections.forEach((_, interaction) => this.deleteClient(namespace, interaction));
 	}
 	//#endregion
+
+	protected override addConnectionListennerHandle(listenner: (connection: QSocketConnection) => void) {
+		this.connections.forEach((connection) => listenner(connection));
+	}
 }

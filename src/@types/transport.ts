@@ -18,7 +18,7 @@ export type IQSocketControlData =
 			namespace: string;
 	  }
 	| {
-			command: 'leave-from-namespace';
+			command: 'leave-namespace';
 			namespace: string;
 	  }
 	| {

@@ -6,7 +6,6 @@ import {
 	IQSocketProtocolChunk,
 	IQSocketProtocolMessage,
 	IQSocketProtocolMessageMetaAck,
-	IQSocketProtocolMessageMetaControl,
 	IQSocketProtocolMessageMetaData,
 	TQSocketProtocolPayloadData,
 } from '@qsocket/protocol';
@@ -115,9 +114,9 @@ export function getContentEncodingString(contentEncoding?: EQSocketProtocolConte
 	return contentEncodingMap.get(contentEncoding) ?? 'raw';
 }
 
-export function createErrorAckMessage(
+export function createErrorAckChunk(
 	sourceChunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>,
-	errors: Error[]
+	error: Error
 ): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
 	return {
 		meta: {
@@ -125,7 +124,7 @@ export function createErrorAckMessage(
 			uuid: sourceChunk.meta.uuid,
 		},
 		payload: {
-			data: errors.map((error) => error.message),
+			data: error.message,
 			'Content-Type': EQSocketProtocolContentType.JSON,
 			'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
 		},
@@ -151,36 +150,44 @@ export function createConfirmAckMessage(
 	];
 }
 
-export function createPingMessage(uuid: string): IQSocketProtocolMessage<IQSocketProtocolMessageMetaControl> {
-	return [
-		{
-			meta: {
-				type: EQSocketProtocolMessageType.CONTROL,
-				uuid: uuid,
-			},
-			payload: {
-				data: {
-					command: 'ping',
-				},
-				'Content-Type': EQSocketProtocolContentType.STRING,
-				'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
-			},
+export function createDataAckChunk(
+	chunk: IQSocketProtocolChunk,
+	data: TQSocketProtocolPayloadData,
+	contentType?: TQSocketContentType,
+	contentEncoding?: TQSocketContentEncoding
+): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
+	return {
+		meta: {
+			type: EQSocketProtocolMessageType.ACK,
+			uuid: chunk.meta.uuid,
 		},
-	];
+		payload: {
+			data: data,
+			'Content-Type': determineContentType(data, contentType),
+			'Content-Encoding': determineContentEncoding(contentEncoding),
+		},
+	};
 }
 
-export function createPongMessage(uuid: string): IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck> {
-	return [
-		{
-			meta: {
-				type: EQSocketProtocolMessageType.ACK,
-				uuid: uuid,
-			},
-			payload: {
-				data: 'pong',
-				'Content-Type': EQSocketProtocolContentType.STRING,
-				'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
-			},
+export function createDataChunk(
+	uuid: string,
+	event: string,
+	namespace: string,
+	data: TQSocketProtocolPayloadData,
+	contentType?: TQSocketContentType,
+	contentEncoding?: TQSocketContentEncoding
+): IQSocketProtocolChunk<IQSocketProtocolMessageMetaData> {
+	return {
+		meta: {
+			type: EQSocketProtocolMessageType.DATA,
+			uuid: uuid,
+			event: event,
+			namespace: namespace,
 		},
-	];
+		payload: {
+			data: data,
+			'Content-Type': determineContentType(data, contentType),
+			'Content-Encoding': determineContentEncoding(contentEncoding),
+		},
+	};
 }

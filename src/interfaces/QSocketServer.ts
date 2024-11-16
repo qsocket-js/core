@@ -15,8 +15,4 @@ export default class QSocketServer extends QSocketBase {
 		this.server = transport;
 		this.server.on('connection', (socket: any) => this.connectionHandle(socket as unknown as TQSocketServerSocket));
 	}
-
-	//#region Абстрактные методы
-	protected override afterCreatingNamespace() {}
-	//#endregion
 }
