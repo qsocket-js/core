@@ -20,14 +20,21 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 	private readonly _name: string;
 	private readonly connections: Map<QSocketInteraction, QSocketConnection> = new Map();
 	private readonly debuger: QSocketDebuger;
-
+	private waiter?: Promise<void>;
+	private waiterWaited?: () => void = () => void 0;
 	public get name(): string {
 		return this._name;
 	}
 
-	constructor(name: string, debuger: QSocketDebuger) {
+	constructor(name: string, isActivated: boolean = true, debuger: QSocketDebuger) {
 		super();
 		this._name = name;
+		if (!isActivated) {
+			this.waiter = new Promise((resolve) => {
+				this.waiterWaited = resolve;
+			});
+		}
+
 		this.debuger = debuger;
 	}
 
@@ -46,6 +53,11 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 			contentEncoding?: TQSocketContentEncoding;
 		}
 	): Promise<P[][]> {
+		if (this.waiter) {
+			this.debuger.log(`The namespace "${this.name}" is not activated. Waiting for activation before sending...`);
+			await this.waiter;
+			this.debuger.log(`The waiting for sending in the namespace "${this.name}" is complete. Continuing with the event ${event}.`);
+		}
 		const promises: Promise<P[]>[] = [];
 		this.connections.forEach((connection) => {
 			promises.push(connection.emit<I, P>(event, data, options));
@@ -61,6 +73,7 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 		namespace: QSocketNamespace,
 		chunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>
 	): Promise<IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck>> {
+		if (namespace.waiter) await namespace.waiter;
 		const connection = namespace.connections.get(interaction);
 		if (!connection) return [];
 		const namespaceResult = await namespace.executor(chunk);
@@ -111,5 +124,23 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 
 	protected override addConnectionListennerHandle(listenner: (connection: QSocketConnection) => void) {
 		this.connections.forEach((connection) => listenner(connection));
+	}
+
+	public static activate(namespace: QSocketNamespace) {
+		if (namespace.waiter !== undefined && namespace.waiterWaited !== undefined) {
+			namespace.debuger.log(`The namespace "${namespace.name}" has been activated!`);
+			namespace.waiterWaited();
+			namespace.waiter = undefined;
+			namespace.waiterWaited = undefined;
+		}
+	}
+
+	public static diactivate(namespace: QSocketNamespace) {
+		if (namespace.waiter === undefined && namespace.waiterWaited === undefined) {
+			namespace.waiter = new Promise((resolve) => {
+				namespace.waiterWaited = resolve;
+			});
+			namespace.debuger.log(`The namespace "${namespace.name}" has been deactivated!`);
+		}
 	}
 }

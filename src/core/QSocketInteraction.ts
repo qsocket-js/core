@@ -58,7 +58,7 @@ export default class QSocketInteraction {
 		interaction.closeHandle();
 	}
 	private closeHandle() {
-		this.debuger.log('Запущен процесс уничтожения соединения', this.id);
+		this.debuger.log('The connection termination process has started.', this.id);
 		this.acks.clear();
 		this.socket.close();
 		this.connectedNamespaces.forEach((namespace) => QSocketNamespace.deleteClient(namespace, this));
@@ -67,7 +67,7 @@ export default class QSocketInteraction {
 	//#region ПРОСЛУШИВАНИЕ СОБЫТИЙ
 	private async onHandle(data: string | ArrayBuffer | Buffer | Uint8Array) {
 		if (typeof data === 'string') {
-			this.debuger.error('Общение по протоколу QSocket возможно только в формате буфера');
+			this.debuger.error('Communication via the QSocket protocol is only possible in buffer format.');
 			return;
 		}
 		const buffer: Uint8Array = new Uint8Array(data);
@@ -194,7 +194,8 @@ export default class QSocketInteraction {
 	}
 
 	async sendData<O extends IQSocketProtocolPayload = IQSocketProtocolPayload>(
-		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>
+		message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData>,
+		timeout: number = this.timeout.value
 	): Promise<O[][] | undefined> {
 		const data = await this.protocol.to(message);
 		if (data instanceof Error) {
@@ -215,9 +216,9 @@ export default class QSocketInteraction {
 						this.acks.set(chunk.meta.uuid, ackResolver as (ackResult: IQSocketProtocolPayload[]) => void);
 						const timer = setTimeout(() => {
 							this.acks.delete(chunk.meta.uuid);
-							this.debuger.error(`Время ожидания истекло [event: ${chunk.meta.event}, uuid: ${chunk.meta.uuid}]`);
+							this.debuger.error(`Время ожидания истекло [event: ${chunk.meta.event}, uuid: ${chunk.meta.uuid}, timeout: ${timeout}]`);
 							emitReject(new Error('Timeout'));
-						}, 10000);
+						}, timeout);
 					});
 				})
 			)
@@ -269,18 +270,18 @@ export default class QSocketInteraction {
 
 	//#region NAMESPACES
 	public static joinNamespace(interaction: QSocketInteraction, namespace: QSocketNamespace) {
-		interaction.joinNamespace(namespace);
+		return interaction.joinNamespace(namespace);
 	}
 	private joinNamespace(namespace: QSocketNamespace) {
 		this.connectedNamespaces.set(namespace.name, namespace);
-		QSocketNamespace.addClient(namespace, this);
+		return QSocketNamespace.addClient(namespace, this);
 	}
 	public static leaveNamespace(interaction: QSocketInteraction, namespace: QSocketNamespace) {
-		interaction.leaveNamespace(namespace);
+		return interaction.leaveNamespace(namespace);
 	}
 	private leaveNamespace(namespace: QSocketNamespace) {
 		this.connectedNamespaces.delete(namespace.name);
-		QSocketNamespace.deleteClient(namespace, this);
+		return QSocketNamespace.deleteClient(namespace, this);
 	}
 	//#endregion
 }

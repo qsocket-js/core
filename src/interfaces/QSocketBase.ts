@@ -81,7 +81,7 @@ export default abstract class QSocketBase {
 			this.debuger.warn(`The namespace "${name}" already exists.`);
 			return this.namespaces.get(name)!;
 		}
-		const namespace = new QSocketNamespace(name, this.debuger);
+		const namespace = new QSocketNamespace(name, this.type === 'server', this.debuger);
 		this.namespaces.set(name, namespace);
 
 		this.namespaceControl(namespace, 'join-namespace');
@@ -121,6 +121,7 @@ export default abstract class QSocketBase {
 	//#region Методы, работающие ТОЛЬКО НА КЛИЕНТЕ
 	protected async namespaceControl(namespace: QSocketNamespace, command: 'join-namespace' | 'leave-namespace'): Promise<boolean> {
 		if (this.type !== 'client') return true;
+
 		const message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaControl> = [
 			{
 				meta: {
@@ -145,16 +146,24 @@ export default abstract class QSocketBase {
 					.sendCommand(message)
 					.then(() => {
 						if (command === 'join-namespace') {
-							QSocketInteraction.joinNamespace(interaction, namespace);
-							this.debuger.info(`The namespace "${namespace.name}" has been created.`);
+							return QSocketInteraction.joinNamespace(interaction, namespace);
 						} else if (command === 'leave-namespace') {
-							QSocketInteraction.leaveNamespace(interaction, namespace);
+							return QSocketInteraction.leaveNamespace(interaction, namespace);
+						}
+						return;
+					})
+					.then(() => {
+						if (command === 'join-namespace') {
+							this.debuger.info(`The namespace "${namespace.name}" has been created.`);
+							QSocketNamespace.activate(namespace);
+						} else if (command === 'leave-namespace') {
 							this.debuger.info(`The namespace "${namespace.name}" has been removed.`);
+							QSocketNamespace.diactivate(namespace);
 						}
 						return true;
 					})
 					.catch(() => {
-						this.debuger.error(`Ошибка при ${command === 'join-namespace' ? 'подключении к' : 'отключении от'} пространству имён "${namespace.name}"`);
+						this.debuger.error(`Error while ${command === 'join-namespace' ? 'connecting to' : 'disconnecting from'} the namespace "${namespace.name}".`);
 						return false;
 					})
 			);
