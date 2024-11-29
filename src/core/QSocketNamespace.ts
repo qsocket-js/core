@@ -1,5 +1,5 @@
 //#region Импорты сущностей QSocket
-import { TQSocketContentEncoding, TQSocketContentType } from '@/@types/interface';
+import { TQSocketContentType } from '@/@types/interface';
 import QSocketConnection from './QSocketConnection';
 import QSocketDebuger from './QSocketDebuger';
 import QSocketInteraction from './QSocketInteraction';
@@ -50,7 +50,6 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 		options?: {
 			timeout?: number;
 			contentType?: TQSocketContentType;
-			contentEncoding?: TQSocketContentEncoding;
 		}
 	): Promise<P[][]> {
 		if (this.waiter) {
@@ -80,7 +79,7 @@ export default class QSocketNamespace extends QSocketNamespaceEventEmitter {
 		const connectionResult = await QSocketConnection.pipe(connection, chunk);
 		const acks = [...namespaceResult, ...connectionResult];
 		if (acks.length > 0) return acks;
-		else return [createDataAckChunk(chunk, undefined, 'undefined', 'raw')];
+		else return [createDataAckChunk(chunk, undefined, 'undefined')];
 	}
 
 	//#endregion

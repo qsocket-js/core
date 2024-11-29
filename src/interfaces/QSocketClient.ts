@@ -75,16 +75,15 @@ export default class QSocketClient extends QSocketBase {
 		if (!this.reconnectionConfig?.enabled || this.reconnecting) return;
 
 		this.reconnecting = true;
-
+		this.debuger.log(`Connection restoration process started.`);
 		while (
 			this.reconnectionConfig.enabled &&
 			(this.reconnectionConfig.maxAttempts === undefined || this.reconnectionAttempts < this.reconnectionConfig.maxAttempts)
 		) {
 			this.reconnectionAttempts++;
 			const delay = this.calculateDelay();
-			this.debuger.log(`Attempting to reconnect... (attempt ${this.reconnectionAttempts})`);
-
 			await new Promise((resolve) => setTimeout(resolve, delay));
+			this.debuger.log(`Attempting to reconnect... (attempt ${this.reconnectionAttempts})`);
 
 			try {
 				await this.connect(); // Пытаемся переподключиться
@@ -106,10 +105,15 @@ export default class QSocketClient extends QSocketBase {
 	 */
 	private calculateDelay(): number {
 		const baseDelay = this.reconnectionConfig?.delay ?? 1000; // Значение по умолчанию — 1 секунда
+		const maxDelay = 60000; // Максимальная задержка — 60 секунд
+
 		if (this.reconnectionConfig?.exponentialBackoff) {
-			return baseDelay * Math.pow(2, this.reconnectionAttempts - 1); // Экспоненциальное увеличение задержки
+			// Логарифмическое увеличение задержки
+			const delay = baseDelay * Math.log1p(this.reconnectionAttempts); // log1p(x) = ln(1 + x)
+			return Math.min(delay, maxDelay); // Ограничиваем максимальное значение
 		}
-		return baseDelay;
+
+		return baseDelay; // Если exponentialBackoff отключён, возвращаем базовую задержку
 	}
 
 	//#endregion

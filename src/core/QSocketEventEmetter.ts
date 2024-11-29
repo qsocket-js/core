@@ -1,4 +1,4 @@
-import { EQSocketListenerType, IQSocketListener, TQSocketContentEncoding, TQSocketContentType, TQSocketListenerCallback } from '@/@types/interface';
+import { EQSocketListenerType, IQSocketListener, TQSocketContentType, TQSocketListenerCallback } from '@/@types/interface';
 import QSocketConnection from './QSocketConnection';
 import {
 	IQSocketProtocolChunk,
@@ -7,7 +7,7 @@ import {
 	IQSocketProtocolMessageMetaData,
 	TQSocketProtocolPayloadData,
 } from '@qsocket/protocol';
-import { createDataAckChunk, getContentEncodingString, getContentTypeString } from './QSocketHelpers';
+import { createDataAckChunk, getContentTypeString } from './QSocketHelpers';
 
 class QSocketEventEmetterBase {
 	/**
@@ -35,8 +35,7 @@ class QSocketEventEmetterBase {
 		event: string,
 		listener: TQSocketListenerCallback<I, O>,
 		type: EQSocketListenerType,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	) {
 		let listeners = this.listeners.get(event);
 		if (!listeners) {
@@ -48,7 +47,6 @@ class QSocketEventEmetterBase {
 			type,
 			listener,
 			contentType,
-			contentEncoding,
 		});
 	}
 
@@ -78,10 +76,8 @@ class QSocketEventEmetterBase {
 		// Выполнение всех обработчиков и сбор результата
 		const results = await Promise.allSettled(
 			listeners.map(async (eventInstance) => {
-				const data = await Promise.resolve(
-					eventInstance.listener(payload.data, getContentTypeString(payload['Content-Type']), getContentEncodingString(payload['Content-Encoding']))
-				);
-				return createDataAckChunk(chunk, data, eventInstance.contentType, eventInstance.contentEncoding);
+				const data = await Promise.resolve(eventInstance.listener(payload.data, getContentTypeString(payload['Content-Type'])));
+				return createDataAckChunk(chunk, data, eventInstance.contentType);
 			})
 		);
 
@@ -113,13 +109,11 @@ export class QSocketConnectionEventEmitter extends QSocketEventEmetterBase {
 	 * @param {string} event - Custom event name.
 	 * @param {TQSocketListenerCallback<I, O>} listener - Callback function for the custom event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type (e.g., 'application/json').
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding (e.g., 'utf-8').
 	 */
 	public on<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O>,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	): void;
 
 	/**
@@ -127,18 +121,16 @@ export class QSocketConnectionEventEmitter extends QSocketEventEmetterBase {
 	 * @param {string} event - Event name.
 	 * @param {Function} listener - Callback function for the event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type.
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding: 'raw' | 'gzip' | 'deflate'.
 	 */
 	public on<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O> | ((connection: QSocketConnection) => void) | (() => void),
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	) {
 		if (event === 'disconnection') {
 			this.disconnectionListeners.push(listener as () => void);
 		} else {
-			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType, contentEncoding);
+			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType);
 		}
 	}
 
@@ -162,13 +154,11 @@ export class QSocketConnectionEventEmitter extends QSocketEventEmetterBase {
 	 * @param {string} event - Custom event name.
 	 * @param {TQSocketListenerCallback<I, O>} listener - Callback function for the custom event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type.
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding: 'raw' | 'gzip' | 'deflate'.
 	 */
 	public once<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O>,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	): void;
 
 	/**
@@ -176,18 +166,16 @@ export class QSocketConnectionEventEmitter extends QSocketEventEmetterBase {
 	 * @param {string} event - Event name.
 	 * @param {Function} listener - Callback function for the event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type.
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding: 'raw' | 'gzip' | 'deflate'.
 	 */
 	public once<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O> | ((connection: QSocketConnection) => void) | (() => void),
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	) {
 		if (event === 'disconnection') {
 			this.disconnectionListeners.push(listener as () => void);
 		} else {
-			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType, contentEncoding);
+			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType);
 		}
 	}
 
@@ -256,13 +244,11 @@ export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBa
 	 * @param {string} event - Custom event name.
 	 * @param {TQSocketListenerCallback<I, O>} listener - Callback function for the custom event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type (e.g., 'application/json').
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding (e.g., 'utf-8').
 	 */
 	public on<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O>,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	): void;
 
 	/**
@@ -270,13 +256,11 @@ export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBa
 	 * @param {string} event - Event name.
 	 * @param {Function} listener - Callback function for the event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type.
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding: 'raw' | 'gzip' | 'deflate'.
 	 */
 	public on<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O> | ((connection: QSocketConnection) => void) | (() => void),
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	) {
 		if (event === 'connection') {
 			this.connectionListeners.push(listener as (connection: QSocketConnection) => void);
@@ -284,7 +268,7 @@ export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBa
 		} else if (event === 'disconnection') {
 			this.disconnectionListeners.push(listener as () => void);
 		} else {
-			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType, contentEncoding);
+			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType);
 		}
 	}
 
@@ -319,13 +303,11 @@ export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBa
 	 * @param {string} event - Custom event name.
 	 * @param {TQSocketListenerCallback<I, O>} listener - Callback function for the custom event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type.
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding: 'raw' | 'gzip' | 'deflate'.
 	 */
 	public once<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O>,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	): void;
 
 	/**
@@ -333,13 +315,11 @@ export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBa
 	 * @param {string} event - Event name.
 	 * @param {Function} listener - Callback function for the event.
 	 * @param {TQSocketContentType} [contentType] - Optional content type.
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding: 'raw' | 'gzip' | 'deflate'.
 	 */
 	public once<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
 		event: string,
 		listener: TQSocketListenerCallback<I, O> | ((connection: QSocketConnection) => void) | (() => void),
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
+		contentType?: TQSocketContentType
 	) {
 		if (event === 'connection') {
 			this.connectionListeners.push(listener as (connection: QSocketConnection) => void);
@@ -347,7 +327,7 @@ export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBa
 		} else if (event === 'disconnection') {
 			this.disconnectionListeners.push(listener as () => void);
 		} else {
-			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType, contentEncoding);
+			this.addEventListener(event, listener as TQSocketListenerCallback<I, O>, EQSocketListenerType.ON, contentType);
 		}
 	}
 
@@ -381,15 +361,8 @@ export abstract class QSocketNamespaceEventEmitter extends QSocketEventEmetterBa
 	 * ```
 	 * @param {string} event - Custom event name.
 	 * @param {TQSocketListenerCallback<I, O>} listener - Callback function for the custom event.
-	 * @param {TQSocketContentType} [contentType] - Optional content type (e.g., 'application/json').
-	 * @param {TQSocketContentEncoding} [contentEncoding] - Optional encoding 'raw' | 'gzip' | 'deflate'.
 	 */
-	public off<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(
-		event: string,
-		listener: TQSocketListenerCallback<I, O>,
-		contentType?: TQSocketContentType,
-		contentEncoding?: TQSocketContentEncoding
-	): void;
+	public off<I extends TQSocketProtocolPayloadData, O extends TQSocketProtocolPayloadData>(event: string, listener: TQSocketListenerCallback<I, O>): void;
 	/**
 	 * Removes a listener for a custom event.
 	 * @example

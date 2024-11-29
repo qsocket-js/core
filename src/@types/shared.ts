@@ -1,5 +1,3 @@
-import { TQSocketProtocolCompressor } from '@qsocket/protocol';
-
 export interface IQSocketLogger {
 	log(...message: any[]): void;
 	error(...message: any[]): void;
@@ -14,12 +12,7 @@ export interface IQSocketConfigBase {
 		value?: number;
 		actionAfrer?: 'none' | 'resend';
 	};
-	/** Конфигурация компрессии */
-	compression?: {
-		compressor?: TQSocketProtocolCompressor;
-		compressionFromSize?: number;
-	};
-	debug: {
+	debug?: {
 		/** Включить отладку */
 		enabled: boolean;
 		/** Инстанс логгера */
@@ -27,6 +20,11 @@ export interface IQSocketConfigBase {
 		/** Префикс перед всеми записями */
 		prefix?: string;
 	};
+
+	/**
+	 * Выходной формат данных. (binary, base64)
+	 */
+	format?: 'base64' | 'binary';
 }
 
 export interface IQSocketClientConfig extends IQSocketConfigBase {

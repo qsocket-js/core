@@ -1,11 +1,10 @@
-import { TQSocketContentEncoding, TQSocketContentType } from '@/@types/interface';
+import { TQSocketContentType } from '@/@types/interface';
 import {
-	EQSocketProtocolContentEncoding,
 	EQSocketProtocolContentType,
 	EQSocketProtocolMessageType,
 	IQSocketProtocolChunk,
-	IQSocketProtocolMessage,
 	IQSocketProtocolMessageMetaAck,
+	IQSocketProtocolMessageMetaControl,
 	IQSocketProtocolMessageMetaData,
 	TQSocketProtocolPayloadData,
 } from '@qsocket/protocol';
@@ -30,20 +29,6 @@ export const reverseContentTypeMap = new Map<TQSocketContentType, EQSocketProtoc
 	['string', EQSocketProtocolContentType.STRING],
 	['json', EQSocketProtocolContentType.JSON],
 	['buffer', EQSocketProtocolContentType.BUFFER],
-]);
-
-/** Маппинг типов кодировок контента */
-export const contentEncodingMap = new Map<EQSocketProtocolContentEncoding, TQSocketContentEncoding>([
-	[EQSocketProtocolContentEncoding.RAW, 'raw'],
-	[EQSocketProtocolContentEncoding.GZIP, 'gzip'],
-	[EQSocketProtocolContentEncoding.DEFLATE, 'deflate'],
-]);
-
-/** Обратный маппинг типов кодировок контента */
-export const reverseContentEncodingMap = new Map<TQSocketContentEncoding, EQSocketProtocolContentEncoding>([
-	['raw', EQSocketProtocolContentEncoding.RAW],
-	['gzip', EQSocketProtocolContentEncoding.GZIP],
-	['deflate', EQSocketProtocolContentEncoding.DEFLATE],
 ]);
 
 //#region Логирование
@@ -81,20 +66,6 @@ export function determineContentType(data: TQSocketProtocolPayloadData, contentT
 }
 
 /**
- * Определяет тип кодировки контента на основе переданного значения.
- * @param {TQSocketContentEncoding} [contentEncoding] - Явно указанный тип кодировки.
- * @returns {EQSocketProtocolContentEncoding} Соответствующий тип кодировки.
- */
-export function determineContentEncoding(contentEncoding?: TQSocketContentEncoding): EQSocketProtocolContentEncoding {
-	if (contentEncoding) {
-		const encoding = reverseContentEncodingMap.get(contentEncoding);
-		if (encoding !== undefined) return encoding;
-	}
-
-	return EQSocketProtocolContentEncoding.RAW;
-}
-
-/**
  * Возвращает строковое представление типа контента.
  * @param {EQSocketProtocolContentType} contentType - Тип контента.
  * @returns {TQSocketContentType} Строковое представление типа контента.
@@ -104,18 +75,40 @@ export function getContentTypeString(contentType?: EQSocketProtocolContentType):
 	return contentTypeMap.get(contentType) ?? 'undefined';
 }
 
-/**
- * Возвращает строковое представление типа кодировки.
- * @param {EQSocketProtocolContentEncoding} contentEncoding - Тип кодировки контента.
- * @returns {TQSocketContentEncoding} Строковое представление типа кодировки контента.
- */
-export function getContentEncodingString(contentEncoding?: EQSocketProtocolContentEncoding): TQSocketContentEncoding {
-	if (contentEncoding === undefined) return 'raw';
-	return contentEncodingMap.get(contentEncoding) ?? 'raw';
+export function createConfirmAckChunk(
+	chunk: IQSocketProtocolChunk,
+	result: TQSocketProtocolPayloadData
+): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
+	return {
+		meta: {
+			type: EQSocketProtocolMessageType.ACK,
+			uuid: chunk.meta.uuid,
+		},
+		payload: {
+			data: result,
+			'Content-Type': EQSocketProtocolContentType.BOOLEAN,
+		},
+	};
+}
+
+export function createHandshakeAckChunk(
+	chunk: IQSocketProtocolChunk,
+	result: TQSocketProtocolPayloadData
+): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
+	return {
+		meta: {
+			type: EQSocketProtocolMessageType.ACK,
+			uuid: chunk.meta.uuid,
+		},
+		payload: {
+			data: result,
+			'Content-Type': EQSocketProtocolContentType.STRING,
+		},
+	};
 }
 
 export function createErrorAckChunk(
-	sourceChunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData>,
+	sourceChunk: IQSocketProtocolChunk<IQSocketProtocolMessageMetaData> | IQSocketProtocolChunk<IQSocketProtocolMessageMetaControl>,
 	error: Error
 ): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
 	return {
@@ -124,37 +117,19 @@ export function createErrorAckChunk(
 			uuid: sourceChunk.meta.uuid,
 		},
 		payload: {
-			data: error.message,
-			'Content-Type': EQSocketProtocolContentType.JSON,
-			'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
+			data: {
+				type: 'error',
+				value: error.message,
+			},
+			'Content-Type': EQSocketProtocolContentType.STRING,
 		},
 	};
-}
-
-export function createConfirmAckMessage(
-	chunk: IQSocketProtocolChunk,
-	result: TQSocketProtocolPayloadData
-): IQSocketProtocolMessage<IQSocketProtocolMessageMetaAck> {
-	return [
-		{
-			meta: {
-				type: EQSocketProtocolMessageType.ACK,
-				uuid: chunk.meta.uuid,
-			},
-			payload: {
-				data: result,
-				'Content-Type': EQSocketProtocolContentType.BOOLEAN,
-				'Content-Encoding': EQSocketProtocolContentEncoding.RAW,
-			},
-		},
-	];
 }
 
 export function createDataAckChunk(
 	chunk: IQSocketProtocolChunk,
 	data: TQSocketProtocolPayloadData,
-	contentType?: TQSocketContentType,
-	contentEncoding?: TQSocketContentEncoding
+	contentType?: TQSocketContentType
 ): IQSocketProtocolChunk<IQSocketProtocolMessageMetaAck> {
 	return {
 		meta: {
@@ -164,7 +139,6 @@ export function createDataAckChunk(
 		payload: {
 			data: data,
 			'Content-Type': determineContentType(data, contentType),
-			'Content-Encoding': determineContentEncoding(contentEncoding),
 		},
 	};
 }
@@ -174,8 +148,7 @@ export function createDataChunk(
 	event: string,
 	namespace: string,
 	data: TQSocketProtocolPayloadData,
-	contentType?: TQSocketContentType,
-	contentEncoding?: TQSocketContentEncoding
+	contentType?: TQSocketContentType
 ): IQSocketProtocolChunk<IQSocketProtocolMessageMetaData> {
 	return {
 		meta: {
@@ -187,7 +160,39 @@ export function createDataChunk(
 		payload: {
 			data: data,
 			'Content-Type': determineContentType(data, contentType),
-			'Content-Encoding': determineContentEncoding(contentEncoding),
 		},
 	};
 }
+
+//#region Преобразователи данных
+export function uint8ArrayToBase64(uint8Array: Uint8Array) {
+	if (typeof window === 'undefined') {
+		// Node.js
+		return Buffer.from(uint8Array).toString('base64');
+	} else {
+		// Браузер
+		let binaryString = '';
+		for (let i = 0; i < uint8Array.length; i++) {
+			binaryString += String.fromCharCode(uint8Array[i]);
+		}
+		return btoa(binaryString);
+	}
+}
+
+export function base64ToUint8Array(base64String: string) {
+	if (typeof window === 'undefined') {
+		// Node.js
+		const buffer = Buffer.from(base64String, 'base64');
+		return new Uint8Array(buffer);
+	} else {
+		// Браузер
+		const binaryString = atob(base64String);
+		const len = binaryString.length;
+		const uint8Array = new Uint8Array(len);
+		for (let i = 0; i < len; i++) {
+			uint8Array[i] = binaryString.charCodeAt(i);
+		}
+		return uint8Array;
+	}
+}
+//#endregion

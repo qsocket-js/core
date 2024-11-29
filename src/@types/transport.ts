@@ -1,16 +1,7 @@
-import type {
-	IQSocketTransportEIOLatestSocket,
-	IQSocketTransportEIOV3Socket,
-	IQSocketTransportEIOClientLatestSocket,
-	IQSocketTransportEIOClientV3Socket,
-	IQSocketTransportEIOV3Server,
-	IQSocketTransportEIOLatestServer,
-} from '@qsocket/transport';
-
-export type TQSocketServer = IQSocketTransportEIOLatestServer | IQSocketTransportEIOV3Server;
-export type TQSocketClientSocket = IQSocketTransportEIOClientLatestSocket | IQSocketTransportEIOClientV3Socket;
-export type TQSocketServerSocket = IQSocketTransportEIOLatestSocket | IQSocketTransportEIOV3Socket;
-export type TQSocketInteractionInstance = TQSocketClientSocket | TQSocketServerSocket;
+export type TQSocketServer = any;
+export type TQSocketClientSocket = any;
+export type TQSocketServerSocket = any;
+export type TQSocketInteractionInstance = any;
 
 export type IQSocketControlData =
 	| {
@@ -20,6 +11,10 @@ export type IQSocketControlData =
 	| {
 			command: 'leave-namespace';
 			namespace: string;
+	  }
+	| {
+			command: 'handshake';
+			handshake: string;
 	  }
 	| {
 			command: 'ping';

@@ -1,7 +1,7 @@
 {
 	"name": "@qsocket/core",
 	"description": "Powerful inter-process communication library for browser and Node.js environments, with flexible transport support including WebSocket, TCP, Unix Sockets, and Windows Pipes. Delivers high-performance data exchange through byte-stream buffers and automatic compression, making it ideal for real-time applications. Currently supports engine.io, with additional transport options coming soon.",
-	"version": "0.0.1-rc",
+	"version": "0.0.1-rc2",
 	"keywords": [
 		"qsocket",
 		"core",
@@ -90,11 +90,6 @@
 		"node": ">=8.0.0"
 	},
 	"dependencies": {
-		"@qsocket/protocol": "^0.0.1-rc2",
-		"@qsocket/transport": "^0.0.1-rc2"
-	},
-	"peerDependencies": {
-		"@qsocket/protocol": "^0.0.1-rc2",
-		"@qsocket/transport": "^0.0.1-rc2"
+		"@qsocket/protocol": "^0.0.1-rc3"
 	}
 }

@@ -13,8 +13,8 @@ import { EQSocketProtocolMessageType } from '@qsocket/protocol';
 //#region Импорт модулей ядра Q-SOCKET
 import QSocketNamespace from './QSocketNamespace';
 import QSocketInteraction from './QSocketInteraction';
-import { TQSocketContentEncoding, TQSocketContentType } from '@/@types/interface';
-import { createDataChunk, determineContentEncoding, determineContentType } from './QSocketHelpers';
+import { TQSocketContentType } from '@/@types/interface';
+import { createDataChunk, determineContentType } from './QSocketHelpers';
 import { QSocketConnectionEventEmitter } from './QSocketEventEmetter';
 //#endregion
 
@@ -43,7 +43,6 @@ export default class QSocketConnection extends QSocketConnectionEventEmitter {
 		options?: {
 			timeout?: number;
 			contentType?: TQSocketContentType;
-			contentEncoding?: TQSocketContentEncoding;
 		}
 	): Promise<O[]> {
 		const message: IQSocketProtocolMessage<IQSocketProtocolMessageMetaData> = [
@@ -51,7 +50,6 @@ export default class QSocketConnection extends QSocketConnectionEventEmitter {
 				payload: {
 					data,
 					'Content-Type': determineContentType(data, options?.contentType),
-					'Content-Encoding': determineContentEncoding(options?.contentEncoding),
 				},
 				meta: {
 					type: EQSocketProtocolMessageType.DATA,
@@ -71,10 +69,9 @@ export default class QSocketConnection extends QSocketConnectionEventEmitter {
 		options?: {
 			timeout?: number;
 			contentType?: TQSocketContentType;
-			contentEncoding?: TQSocketContentEncoding;
 		}
 	): Promise<O[][] | undefined> {
-		const chunk = createDataChunk(this.interaction.uuid.next(), event, this.namespace.name, data, options?.contentType, options?.contentEncoding);
+		const chunk = createDataChunk(this.interaction.uuid.next(), event, this.namespace.name, data, options?.contentType);
 		const interactionsResults = await this.interaction.broadcast<O>([chunk], options?.timeout);
 		return interactionsResults.map((interactionResult) => interactionResult[0]);
 	}
